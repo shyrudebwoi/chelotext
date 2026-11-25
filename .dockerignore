@@ -1,0 +1,16 @@
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+node_modules
+data
+tmp
+certs/*.crt
+certs/*.pem
+*.log
+eval/report.md
+coverage
+NUL
+.DS_Store
+Thumbs.db

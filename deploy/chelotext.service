@@ -1,0 +1,30 @@
+[Unit]
+Description=CheloText — PWA для упрощения текста
+Documentation=https://github.com/shyrudebwoi/chelotext
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=chelotext
+Group=chelotext
+WorkingDirectory=/opt/chelotext
+EnvironmentFile=/opt/chelotext/.env
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=3000
+Environment=SECURE_COOKIES=true
+Environment=TRUST_PROXY=true
+ExecStart=/usr/bin/node --no-warnings /opt/chelotext/server/index.js
+Restart=always
+RestartSec=5
+
+# Минимальное укрепление: только data/ и certs/ доступны для записи.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/chelotext/data /opt/chelotext/certs
+
+[Install]
+WantedBy=multi-user.target

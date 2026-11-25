@@ -500,6 +500,35 @@ svg {
 .grid--2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
+
+/* ---------- Рабочая область: ввод слева, настройки справа ---------- */
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);
+  gap: var(--s-6);
+  align-items: start;
+}
+.workspace__source {
+  min-width: 0;
+}
+.workspace__settings {
+  position: sticky;
+  top: calc(64px + var(--s-4));
+}
+/* Чуть плотнее, но без «сплющивания»: читается одинаково хорошо на десктопе. */
+.workspace__settings .card__title {
+  font-size: 18px;
+  margin-bottom: var(--s-2);
+}
+.workspace__settings .switch-row {
+  padding: var(--s-3) 0;
+}
+.workspace__settings .slider {
+  padding-top: var(--s-1);
+}
+.workspace__settings .slider__track {
+  padding: var(--s-2) 0;
+}
 .stack > * + * {
   margin-top: var(--s-6);
 }
@@ -1280,6 +1309,9 @@ svg {
 .mt-0 {
   margin-top: 0;
 }
+.mt-3 {
+  margin-top: var(--s-3);
+}
 .mt-4 {
   margin-top: var(--s-4);
 }
@@ -1321,6 +1353,13 @@ svg {
   }
   .grid--2 {
     grid-template-columns: 1fr;
+  }
+  .workspace {
+    grid-template-columns: 1fr;
+    gap: var(--s-4);
+  }
+  .workspace__settings {
+    position: static;
   }
 }
 

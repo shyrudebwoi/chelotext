@@ -209,7 +209,7 @@ function appPage({ user }) {
   if (user.consentStatus !== 'granted') return { redirect: '/start' };
 
   const body = `
-<section class="section" style="padding-top:var(--s-8)">
+<section class="section" style="padding-top:var(--s-6)">
   <div class="container">
     <div class="row row--between mb-6">
       <div>
@@ -219,6 +219,8 @@ function appPage({ user }) {
       <a class="btn btn--secondary btn--sm" href="/history">${icon('history', 16)}<span>История</span></a>
     </div>
 
+    <div class="workspace">
+    <div class="workspace__source">
     <div class="tabs" role="tablist" aria-label="Откуда взять текст">
       <button class="tab" role="tab" id="tab-paste" aria-controls="panel-paste" aria-selected="true">Вставить текст</button>
       <button class="tab" role="tab" id="tab-file" aria-controls="panel-file" aria-selected="false">Файл</button>
@@ -227,7 +229,7 @@ function appPage({ user }) {
 
     <div id="panel-paste" role="tabpanel" aria-labelledby="tab-paste">
       <label class="sr-only" for="source-text">Текст для обработки</label>
-      <textarea class="textarea" id="source-text" rows="12" placeholder="Вставь сюда текст — статью, документ, пост. Мы сделаем его легче для чтения." aria-describedby="counter-hint"></textarea>
+      <textarea class="textarea" id="source-text" rows="9" placeholder="Вставь сюда текст — статью, документ, пост. Мы сделаем его легче для чтения." aria-describedby="counter-hint"></textarea>
       <div class="counter">
         <span id="counter-hint" class="tiny">Считаем знаки</span>
         <span class="counter__value" id="char-counter" aria-live="polite">0 / ${config.limits.maxChars.toLocaleString('ru-RU')}</span>
@@ -254,7 +256,8 @@ function appPage({ user }) {
       </label>
     </div>
 
-    <div class="card mt-6">
+    </div>
+    <aside class="workspace__settings card" aria-label="Настройки обработки">
       <h2 class="card__title">Настройки</h2>
       <div id="mode-switches">
         <div class="switch-row">
@@ -280,7 +283,7 @@ function appPage({ user }) {
         </div>
       </div>
 
-      <div class="slider mt-6">
+      <div class="slider mt-4">
         <div class="slider__head">
           <label class="field__label mb-0" for="level">Глубина правки</label>
           <span class="slider__value" id="level-value">3 · Заметно проще</span>
@@ -292,10 +295,11 @@ function appPage({ user }) {
         <div class="slider__labels" id="level-labels"><span>полегче</span><span>поглубже</span></div>
       </div>
 
-      <div class="row mt-6">
+      <div class="row mt-4">
         <button class="btn btn--lg grow" id="process-btn" type="button">Обработать</button>
       </div>
-      <p class="tiny muted mt-4 mb-0">Текст передаётся модели только если она включена. По умолчанию работают правила — текст никуда не уходит.</p>
+      <p class="tiny muted mt-3 mb-0">Текст передаётся модели только если она включена. По умолчанию работают правила — текст никуда не уходит.</p>
+    </aside>
     </div>
 
     <div id="progress-panel" class="card mt-6 hidden" aria-live="polite">
