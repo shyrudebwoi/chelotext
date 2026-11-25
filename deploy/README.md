@@ -43,6 +43,28 @@ GIGACHAT_CRED=...
 `NODE_ENV`, `HOST`, `PORT`, `SECURE_COOKIES` и `TRUST_PROXY` из `.env` переопределяются
 в `docker-compose.yml`, поэтому менять их не нужно. Остальные значения шаблона рабочие.
 
+### Бот ВКонтакте (необязательно)
+
+Чтобы подключить бота сообщества, добавьте в тот же `.env`:
+
+```dotenv
+VK_BOT_ENABLED=true
+VK_BOT_GROUP_ID=123456789
+VK_BOT_TOKEN=...
+VK_BOT_ADMIN_IDS=11111111,22222222
+```
+
+Ключ создаётся в сообществе: **Управление → Работа с API → Ключи доступа** с правом
+**«Сообщения сообщества»**; на вкладке **Long Poll API** включите событие `message_new`.
+Вписывайте ключ только в `.env` на сервере — не в чат и не в git. После правки:
+
+```bash
+docker compose -f deploy/docker-compose.yml up -d --force-recreate
+docker compose -f deploy/docker-compose.yml logs -f app   # ждём «VK-бот: Long Poll запущен»
+```
+
+Команды бота и формат отчёта — в [../README.md](../README.md#бот-вконтакте).
+
 ---
 
 ## 2. Сертификат НУЦ Минцифры

@@ -17,6 +17,7 @@ import { PAGES, notFound, serverError } from './pages/index.js';
 import { providerInfo } from './core/llm/provider.js';
 import { isOcrAvailable } from './core/extract/ocr.js';
 import { purgeExpired } from './services/documents.js';
+import { startVkBot, stopVkBot } from './services/vk-bot.js';
 
 export function createApp() {
   const app = express();
@@ -137,9 +138,11 @@ async function main() {
     const ocr = await isOcrAvailable().catch(() => false);
     console.info(`Челотекст запущен: http://${config.host}:${config.port}`);
     console.info(`LLM: ${config.llm.provider}${config.llm.enabled ? '' : ' (только правила)'} · OCR: ${ocr ? config.ocr.languages.join('+') : 'выключен'}`);
+    startVkBot();
   });
 
   const shutdown = () => {
+    stopVkBot();
     server.close(() => {
       closeDb();
       process.exit(0);

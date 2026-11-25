@@ -32,7 +32,7 @@ Node v22 + Express, `node:sqlite` (запуск с `--no-warnings`), своя in
 ```bash
 npm start                 # сервер на :3000
 PORT=3311 npm start       # сервер на :3311 (используется при смоуке)
-npm test                  # 126 тестов, node --test
+npm test                  # 140 тестов, node --test
 npm run eval              # eval-выборка, отчёт eval/report.md
 npm run eval -- --levels  # уровни 1, 3, 5
 npm run eval -- --json    # машинный вывод
@@ -96,7 +96,7 @@ npm run certs             # скачать корневой сертификат
   2. `checkIntegrity` (`server/core/integrity.js`) сравнивал даты с учётом регистра, а
      `capitalizeStart` поднимает «г.» → «Г.» в начале абзаца («г. Москва» → «Г. Москва»),
      из-за чего «2026 г.» считалось потерянным. Фикс: даты нормализуются в нижний регистр.
-- **Результат: 18/18 OK, avgRatio 100%, avgScore 100%, exit 0. Тесты на тот момент 118/118 (сейчас 126).**
+- **Результат: 18/18 OK, avgRatio 100%, avgScore 100%, exit 0. Тесты на тот момент 118/118 (сейчас 140).**
 
 ### Сессия «GigaChat + документация» (эта)
 
@@ -126,6 +126,13 @@ npm run certs             # скачать корневой сертификат
 - Исправлено наложение заголовков «БЫЛО / СТАЛО» на текст в diff: `.diff__head` больше не `sticky` с `top:64px` — заголовок является соседом скроллируемого `.diff__body`, поэтому прилипал к шапке и перекрывал строки. Теперь он статичный и всегда стоит над телом.
 - `sw.js` теперь отдаётся с `Cache-Control: no-cache, no-store, must-revalidate`, а версия кэша поднята до `chelotext-v2`: без этого установленная PWA могла показывать старый CSS до часа.
 
+### Сессия «Бот ВК» (эта)
+
+- Добавлен учёт расхода токенов: провайдеры (GigaChat, OpenAI-совместимый, Ollama) сообщают `usage` через callback; пайплайн суммирует его в `llm.usage`; завершённые задачи пишут строку в новую таблицу `llm_usage` (миграция v2) с `user_id`, `job_id`, провайдером, моделью, входом/ответом/итогом и временем.
+- Добавлен бот сообщества ВКонтакте на Bots Long Poll API (`server/services/vk-bot.js`): команды `/stats`, `/today`, `/week`, `/total`, `/help`; отчёт содержит почту, время в `VK_BOT_TZ` и токены. Отвечает только ID из `VK_BOT_ADMIN_IDS`.
+- Токен читается только из `.env` (`VK_BOT_TOKEN`), не логируется и заменяется на `[скрыто]` в ошибках. Инструкция — README, раздел «Бот ВКонтакте»; в `.env.example` добавлен блок настроек.
+- Добавлено 14 тестов: разбор команд, формат отчётов, часовой пояс, Long Poll, отказ не-админу, запуск без токена, запись/агрегаты `llm_usage`, `usage` GigaChat. Всего 140 тестов.
+
 **Хвост из HANDOFF — закрыто.**
 - `scripts/check.js` создан, `npm run lint` проходит.
 - `.gitignore` создан (`.env`, `data/`, `tmp/`, `certs/*.crt`, логи).
@@ -142,6 +149,7 @@ npm run certs             # скачать корневой сертификат
 | 12. Финальная проверка: тесты/lint/eval/запуск | **готово** |
 | 13. Ручной смоук мобильного редактора и a11y | не начато |
 | 14. Двухколоночный `/app` + Docker Compose для VDS (`deploy/`) | **готово** |
+| 15. Учёт токенов + бот сообщества ВК (Long Poll) | **готово, нужен ручной `VK_BOT_TOKEN` в `.env`** |
 
 ## 6. Что осталось
 
@@ -180,7 +188,9 @@ server/core/rules/dictionaries.js — словари замен, SCIENTIFIC/ILLE
 server/core/integrity.js     — сверка чисел/дат/имён/цитат/ссылок
 server/core/precheck.js      — блокировки и определение научного текста
 server/core/llm/provider.js  — адаптер LLM: rules | ollama | openai | gigachat
-server/core/llm/gigachat.js  — токен 30 мин, Basic-ключ, 1 поток, ошибки, сертификат НУЦ
+server/core/llm/gigachat.js  — токен 30 мин, Basic-ключ, 1 поток, ошибки, сертификат НУЦ, usage
+server/services/usage.js     — запись и агрегаты расхода токенов (llm_usage)
+server/services/vk-bot.js    — бот сообщества ВК: Long Poll, команды, отчёты
 scripts/check.js             — lint без зависимостей (`npm run lint`)
 scripts/certs.js             — скачивание сертификата НУЦ Минцифры (`npm run certs`)
 .env / .env.example          — рабочие настройки и полностью заполненный шаблон (пустые только ключи GigaChat)
@@ -190,7 +200,7 @@ public/js/app.js             — общий фронтенд + регистра�
 public/sw.js                 — service worker (кэш статики, офлайн-заглушка)
 eval/run.js                  — прогон eval-выборки
 eval/texts/*.txt             — 18 текстов
-test/*.test.js               — 126 тестов (включая 7 на GigaChat с мок-транспортом)
+test/*.test.js               — 140 тестов (включая GigaChat и бота ВК на моках)
 ```
 
 ## 9. Известные ограничения (для документации)

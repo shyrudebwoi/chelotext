@@ -153,6 +153,30 @@ test('gigachat: ошибка 402 не повторяется и не содер�
   assert.equal(calls.filter((call) => call.url.endsWith('/chat/completions')).length, 1);
 });
 
+test('gigachat: сообщает расход токенов после успешного ответа', async () => {
+  const { transport } = transportWith((url) => (
+    url.includes('oauth')
+      ? tokenResponse()
+      : {
+        status: 200,
+        data: {
+          choices: [{ message: { role: 'assistant', content: 'Готовый текст' }, finish_reason: 'stop' }],
+          usage: { prompt_tokens: 18, completion_tokens: 42, precached_prompt_tokens: 0, total_tokens: 60 },
+        },
+      }
+  ));
+  const client = createGigaChatClient({
+    config: makeConfig({ cred: 'prepared-key' }),
+    requestJson: transport,
+    sleep: async () => {},
+    now: () => NOW,
+  });
+
+  let captured = null;
+  await client.generate('Текст.', { onUsage: (usage) => { captured = usage; } });
+  assert.deepEqual(captured, { promptTokens: 18, completionTokens: 42, totalTokens: 60, calls: 1 });
+});
+
 test('gigachat: без ключа доступность false, а providerInfo не раскрывает секрет', async () => {
   const client = createGigaChatClient({ config: makeConfig(), requestJson: async () => tokenResponse(), now: () => NOW });
   assert.equal(client.hasCredentials, false);

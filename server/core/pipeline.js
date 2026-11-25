@@ -7,6 +7,7 @@ import { chunkAst } from './text/chunk.js';
 import { applyRules, readability } from './rules/engine.js';
 import { createProvider, providerInfo } from './llm/provider.js';
 import { PROMPT_VERSION } from './llm/prompts.js';
+import { emptyUsage, addUsage } from './llm/usage.js';
 import { checkIntegrity } from './integrity.js';
 import { precheck } from './precheck.js';
 
@@ -71,11 +72,19 @@ export async function runPipeline({ text, options = {}, onProgress = () => {}, i
   const llmInfo = providerInfo();
   let llmUsed = false;
   let llmFallbackReason = null;
+  const llmUsage = emptyUsage();
 
   if (modes.r2 && llmInfo.enabled && provider.available) {
     report(STAGES.llm, { progress: 45 });
     try {
-      const pass = await runLlmPass(resultAst, { modes, level, provider, onProgress: report, assertNotCancelled });
+      const pass = await runLlmPass(resultAst, {
+        modes,
+        level,
+        provider,
+        onProgress: report,
+        assertNotCancelled,
+        onUsage: (usage) => addUsage(llmUsage, usage),
+      });
       resultAst = pass.ast;
       llmUsed = pass.used > 0;
       if (pass.failed > 0) {
@@ -124,11 +133,12 @@ export async function runPipeline({ text, options = {}, onProgress = () => {}, i
       model: llmInfo.model,
       promptVersion: PROMPT_VERSION,
       fallbackReason: llmFallbackReason,
+      usage: llmUsage,
     },
   };
 }
 
-async function runLlmPass(ast, { modes, level, provider, onProgress, assertNotCancelled }) {
+async function runLlmPass(ast, { modes, level, provider, onProgress, assertNotCancelled, onUsage }) {
   const chunks = chunkAst(ast, config.llm.chunkChars);
   const processed = [];
   let used = 0;
@@ -143,7 +153,7 @@ async function runLlmPass(ast, { modes, level, provider, onProgress, assertNotCa
     }
     let rewritten;
     try {
-      rewritten = await provider.generate(chunkText, { level, modes });
+      rewritten = await provider.generate(chunkText, { level, modes, onUsage });
     } catch (error) {
       if (error instanceof PipelineCancelled) throw error;
       // Не валим всю задачу: чанк остаётся как есть после правил.

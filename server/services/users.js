@@ -161,6 +161,7 @@ export function deleteUserData(userId) {
     q.run('DELETE FROM jobs WHERE user_id = ?', userId);
     q.run('DELETE FROM documents WHERE user_id = ?', userId);
     q.run('DELETE FROM precheck_log WHERE user_id = ?', userId);
+    q.run('DELETE FROM llm_usage WHERE user_id = ?', userId);
   });
 }
 
@@ -172,6 +173,7 @@ export function deleteUserAccount(userId) {
     q.run('DELETE FROM jobs WHERE user_id = ?', userId);
     q.run('DELETE FROM documents WHERE user_id = ?', userId);
     q.run('DELETE FROM precheck_log WHERE user_id = ?', userId);
+    q.run('DELETE FROM llm_usage WHERE user_id = ?', userId);
     q.run('DELETE FROM consents WHERE user_id = ?', userId);
     q.run('DELETE FROM users WHERE id = ?', userId);
   });

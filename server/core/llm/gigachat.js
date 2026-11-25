@@ -8,6 +8,7 @@ import tls from 'node:tls';
 import { randomUUID } from 'node:crypto';
 import { ROOT } from '../../config.js';
 import { buildSystemPrompt, buildUserPrompt } from './prompts.js';
+import { normalizeUsage } from './usage.js';
 
 const DEFAULT_CA_PATH = path.join(ROOT, 'certs', 'russian_trusted_root_ca.crt');
 
@@ -147,7 +148,7 @@ export function createGigaChatClient({
     return token;
   }
 
-  async function chat(text, { level = 3, modes = {} } = {}) {
+  async function chat(text, { level = 3, modes = {}, onUsage } = {}) {
     const body = {
       model: llm.model || 'GigaChat-2',
       messages: [
@@ -181,6 +182,13 @@ export function createGigaChatClient({
         continue;
       }
       if (response.status >= 200 && response.status < 300) {
+        // Токены уже потрачены даже если ответ оборван: учитываем до проверок.
+        // Ошибка учёта не должна ломать генерацию.
+        try {
+          onUsage?.({ ...normalizeUsage(response.data?.usage), calls: 1 });
+        } catch {
+          // игнорируем
+        }
         const choice = response.data?.choices?.[0];
         if (!choice?.message?.content) throw new Error('GigaChat вернул пустой ответ');
         if (choice.finish_reason === 'length') {

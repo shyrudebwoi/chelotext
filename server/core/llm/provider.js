@@ -4,6 +4,7 @@
 import { config } from '../../config.js';
 import { buildSystemPrompt, buildUserPrompt, PROMPT_VERSION } from './prompts.js';
 import { createGigaChatClient } from './gigachat.js';
+import { normalizeUsage } from './usage.js';
 
 class CircuitBreaker {
   constructor({ failuresToOpen = 3, cooldownMs = 60_000 } = {}) {
@@ -108,7 +109,7 @@ export class OllamaProvider extends LlmProvider {
     return config.llm.enabled && !breaker.isOpen;
   }
 
-  async generate(text, { level = 3, modes = {} } = {}) {
+  async generate(text, { level = 3, modes = {}, onUsage } = {}) {
     if (!this.available) throw new LlmUnavailableError('LLM выключена или временно недоступна');
     const body = {
       model: config.llm.model,
@@ -128,6 +129,11 @@ export class OllamaProvider extends LlmProvider {
         );
         if (!response.ok) throw new Error(`Ollama HTTP ${response.status}`);
         const data = await response.json();
+        try {
+          onUsage?.({ ...normalizeUsage(data), calls: 1 });
+        } catch {
+          // учёт не должен ломать генерацию
+        }
         return data?.message?.content ?? '';
       }, config.llm.maxRetries);
       breaker.success();
@@ -149,7 +155,7 @@ export class OpenAiCompatibleProvider extends LlmProvider {
     return config.llm.enabled && Boolean(config.llm.apiKey) && !breaker.isOpen;
   }
 
-  async generate(text, { level = 3, modes = {} } = {}) {
+  async generate(text, { level = 3, modes = {}, onUsage } = {}) {
     if (!this.available) throw new LlmUnavailableError('LLM выключена или временно недоступна');
     const body = {
       model: config.llm.model,
@@ -172,6 +178,11 @@ export class OpenAiCompatibleProvider extends LlmProvider {
         );
         if (!response.ok) throw new Error(`LLM HTTP ${response.status}`);
         const data = await response.json();
+        try {
+          onUsage?.({ ...normalizeUsage(data?.usage), calls: 1 });
+        } catch {
+          // учёт не должен ломать генерацию
+        }
         return data?.choices?.[0]?.message?.content ?? '';
       }, config.llm.maxRetries);
       breaker.success();
@@ -202,12 +213,12 @@ export class GigaChatProvider extends LlmProvider {
     return this.client.credentialSource;
   }
 
-  async generate(text, { level = 3, modes = {} } = {}) {
+  async generate(text, { level = 3, modes = {}, onUsage } = {}) {
     if (!this.available) {
       throw new LlmUnavailableError('GigaChat выключен или не задан ключ в .env');
     }
     try {
-      const result = await this.client.generate(text, { level, modes });
+      const result = await this.client.generate(text, { level, modes, onUsage });
       breaker.success();
       return cleanLlmOutput(result);
     } catch (error) {

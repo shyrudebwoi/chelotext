@@ -15,6 +15,7 @@ import { precheck } from '../core/precheck.js';
 import { buildLineDiff, diffSummary } from '../core/diff.js';
 import { exportDocument, filenameFor, FORMATS, FORMAT_META } from '../core/export/index.js';
 import { astFromEditedText, parsePlainText, astToPlainText } from '../core/text/ast.js';
+import { safeRecordLlmUsage } from '../services/usage.js';
 import { q } from '../db/index.js';
 
 export const processRouter = express.Router();
@@ -110,6 +111,13 @@ processRouter.post('/process', processLimiter, express.json({ limit: '4mb' }), r
       promptVersion: result.llm.promptVersion,
       finishedAt: new Date().toISOString(),
     });
+    safeRecordLlmUsage({
+      userId: req.user.id,
+      jobId,
+      provider: result.llm.provider,
+      model: result.llm.model,
+      usage: result.llm.usage,
+    });
 
     const job = getJob(req.user.id, jobId);
     return res.json({
@@ -199,6 +207,13 @@ processRouter.post('/process/file', uploadLimiter, upload.single('file'), requir
       llmProvider: result.llm.provider, llmModel: result.llm.model, promptVersion: result.llm.promptVersion,
       finishedAt: new Date().toISOString(),
     });
+    safeRecordLlmUsage({
+      userId: req.user.id,
+      jobId,
+      provider: result.llm.provider,
+      model: result.llm.model,
+      usage: result.llm.usage,
+    });
     const job = getJob(req.user.id, jobId);
     return res.json({
       async: false,
@@ -254,6 +269,13 @@ processRouter.post('/process/url', processLimiter, express.json(), requireAuth, 
       status: 'done', stage: 'done', progress: 100, resultText: result.text, resultAst: result.ast,
       integrity: result.integrity, llmProvider: result.llm.provider, llmModel: result.llm.model,
       promptVersion: result.llm.promptVersion, finishedAt: new Date().toISOString(),
+    });
+    safeRecordLlmUsage({
+      userId: req.user.id,
+      jobId,
+      provider: result.llm.provider,
+      model: result.llm.model,
+      usage: result.llm.usage,
     });
     return res.json({
       async: false, job: serializeJob(getJob(req.user.id, jobId)), documentId,

@@ -3,6 +3,7 @@
 import { config } from '../config.js';
 import { runPipeline, PipelineCancelled } from '../core/pipeline.js';
 import { getJobRaw, updateJob, isCancelRequested } from '../services/documents.js';
+import { safeRecordLlmUsage } from '../services/usage.js';
 import { parsePlainText, astToPlainText } from '../core/text/ast.js';
 import { q, now } from '../db/index.js';
 
@@ -65,9 +66,9 @@ async function runJob({ jobId, payload }) {
 
   try {
     if (payload.kind === 'extract') {
-      await runExtractJob(jobId, payload, { isCancelled });
+      await runExtractJob(jobId, payload, { isCancelled, userId: job.user_id });
     } else {
-      await runProcessJob(jobId, payload, { isCancelled });
+      await runProcessJob(jobId, payload, { isCancelled, userId: job.user_id });
     }
   } catch (error) {
     if (error instanceof PipelineCancelled || error?.name === 'AbortError' || isCancelled()) {
@@ -87,7 +88,7 @@ async function runJob({ jobId, payload }) {
   }
 }
 
-async function runProcessJob(jobId, payload, { isCancelled }) {
+async function runProcessJob(jobId, payload, { isCancelled, userId }) {
   const options = payload.options || {};
   const onProgress = (stage) => {
     if (isCancelled()) return;
@@ -124,9 +125,16 @@ async function runProcessJob(jobId, payload, { isCancelled }) {
     promptVersion: result.llm.promptVersion,
     finishedAt: now(),
   });
+  safeRecordLlmUsage({
+    userId,
+    jobId,
+    provider: result.llm.provider,
+    model: result.llm.model,
+    usage: result.llm.usage,
+  });
 }
 
-async function runExtractJob(jobId, payload, { isCancelled }) {
+async function runExtractJob(jobId, payload, { isCancelled, userId }) {
   const { extractFile } = await import('../services/ingest.js');
   const step = (stage, progress) => {
     if (isCancelled()) return;
@@ -172,6 +180,13 @@ async function runExtractJob(jobId, payload, { isCancelled }) {
     llmModel: result.llm.model,
     promptVersion: result.llm.promptVersion,
     finishedAt: now(),
+  });
+  safeRecordLlmUsage({
+    userId,
+    jobId,
+    provider: result.llm.provider,
+    model: result.llm.model,
+    usage: result.llm.usage,
   });
 
   // Обновляем документ: сохраняем извлечённый текст и метаданные.

@@ -36,7 +36,7 @@ flowchart LR
 | Транспорт | `server/index.js`, `server/render.js`, `server/pages/index.js` | Express, статика с версионированием ассетов, SSR-страницы, `/healthz`, 404/500 без стектрейсов. |
 | Middleware / безопасность | `server/middleware/index.js`, `server/lib/*` | Подписанные cookie-сессии, **gate согласия (403)**, rate-limit по IP/пользователю, CSRF по Origin, CSP и другие заголовки. |
 | API | `server/routes/auth.js`, `process.js`, `history.js` | Авторизация/согласие, обработка и задачи, ревизии, экспорт, история, настройки, удаление данных. |
-| Прикладные сервисы | `server/services/users.js`, `documents.js`, `ingest.js`, `server/jobs/queue.js` | Пользователи и согласия, документы/задачи/ревизии/экспорты, приём материалов, очередь. |
+| Прикладные сервисы | `server/services/users.js`, `documents.js`, `ingest.js`, `usage.js`, `vk-bot.js`, `server/jobs/queue.js` | Пользователи и согласия, документы/задачи/ревизии/экспорты, приём материалов, учёт токенов, бот ВК, очередь. |
 | Ядро обработки | `server/core/**` | AST, правила, LLM-адаптеры, предпроверка, контроль целостности, извлечение, экспорт, diff. |
 | Данные | `server/db/index.js` | `DatabaseSync` из `node:sqlite`, WAL, внешние ключи, миграции. |
 | Клиент | `public/**` | SSR-страницы + модульный JS, PWA manifest и service worker, локальные шрифты и иконки. |
@@ -94,7 +94,7 @@ flowchart TD
 
 ## 4. Провайдеры LLM
 
-`server/core/llm/provider.js` — заменяемый адаптер. Бизнес-логика зависит только от интерфейса `generate(text, { level, modes })`; выбор делается в `createProvider()` по `LLM_PROVIDER`.
+`server/core/llm/provider.js` — заменяемый адаптер. Бизнес-логика зависит только от интерфейса `generate(text, { level, modes, onUsage })`; выбор делается в `createProvider()` по `LLM_PROVIDER`. Провайдеры сообщают расход токенов через `onUsage`, пайплайн суммирует его в `llm.usage`, а завершённая задача пишет строку в `llm_usage`.
 
 | Провайдер | Статус | Транспорт |
 |---|---|---|
@@ -172,7 +172,7 @@ flowchart TD
 
 ## 8. База данных
 
-`server/db/index.js`: `DatabaseSync` из `node:sqlite`, PRAGMA `journal_mode=WAL`, `foreign_keys=ON`, `busy_timeout=5000`. Миграции версионируются таблицей `schema_migrations` (сейчас одна миграция, version 1 `initial`). Обёртка `q` даёт `all/get/run/exec/tx` (`BEGIN IMMEDIATE` для транзакций).
+`server/db/index.js`: `DatabaseSync` из `node:sqlite`, PRAGMA `journal_mode=WAL`, `foreign_keys=ON`, `busy_timeout=5000`. Миграции версионируются таблицей `schema_migrations` (version 1 `initial`, version 2 `llm_usage`). Обёртка `q` даёт `all/get/run/exec/tx` (`BEGIN IMMEDIATE` для транзакций).
 
 | Таблица | Назначение и ключевые поля |
 |---|---|
@@ -184,6 +184,7 @@ flowchart TD
 | `edits` | Ревизии результата: `job_id`, `revision` (уникально в паре), `text`, `ast_json`. |
 | `exports` | Журнал скачиваний: `job_id`, `format`, `bytes`, `created_at`. |
 | `precheck_log` | **Журнал заблокированных попыток** (в ТЗ — «блокировки»): `reason_code`, `excerpt` (до 300 знаков), `char_count`. Отдельной таблицы `blocked_attempts` в коде нет. |
+| `llm_usage` | Расход токенов: `user_id`, `job_id`, `provider`, `model`, `prompt_tokens`, `completion_tokens`, `total_tokens`, `calls`, `created_at`. Используется ботом ВК для отчётов. |
 | `schema_migrations` | `version`, `name`, `applied_at`. |
 
 Внешние ключи каскадно удаляют документы, задачи, ревизии и экспорты при удалении пользователя. Отзыв согласия вызывает `deleteUserData()` — фактическое удаление данных. Фоновая чистка раз в 6 часов (`pruneSessions`, `purgeExpired`) и ручной `POST /api/settings/purge` учитывают `RETENTION_DAYS` / `users.retention_days`.
@@ -202,7 +203,7 @@ flowchart TD
 
 ## 10. Инструменты и известные разрывы с ТЗ/планом
 
-- `npm run lint` и `npm run certs` имеют рабочие скрипты в `scripts/`; `npm test` — 126 зелёных тестов, включая изоляцию секретов GigaChat; eval-выборка — 18/18.
+- `npm run lint` и `npm run certs` имеют рабочие скрипты в `scripts/`; `npm test` — 140 зелёных тестов, включая изоляцию секретов GigaChat; eval-выборка — 18/18.
 - `SYNC_MAX_MS` есть в конфиге, но переключение в очередь идёт только по числу знаков.
 - `OCR_CONCURRENCY` объявлен в конфиге, но отдельный лимит для OCR в очереди не применяется.
 - EPUB и офлайн-обработка не реализованы.

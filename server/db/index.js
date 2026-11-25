@@ -123,6 +123,26 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_precheck_created ON precheck_log(created_at DESC);
     `,
   },
+  {
+    version: 2,
+    name: 'llm_usage',
+    sql: `
+      CREATE TABLE IF NOT EXISTS llm_usage (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        job_id INTEGER REFERENCES jobs(id) ON DELETE CASCADE,
+        provider TEXT,
+        model TEXT,
+        prompt_tokens INTEGER NOT NULL DEFAULT 0,
+        completion_tokens INTEGER NOT NULL DEFAULT 0,
+        total_tokens INTEGER NOT NULL DEFAULT 0,
+        calls INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_llm_usage_created ON llm_usage(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_llm_usage_user ON llm_usage(user_id, created_at DESC);
+    `,
+  },
 ];
 
 export function getDb() {

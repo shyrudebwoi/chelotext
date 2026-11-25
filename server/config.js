@@ -36,6 +36,10 @@ const bool = (key, fallback) => {
   if (value === undefined) return fallback;
   return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
 };
+const idList = (value) => String(value || '')
+  .split(/[,\s]+/)
+  .map((part) => Math.trunc(Number(part)))
+  .filter((id) => Number.isFinite(id) && id > 0);
 
 const DATA_DIR = process.env.DATA_DIR ? path.resolve(ROOT, process.env.DATA_DIR) : path.join(ROOT, 'data');
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -119,6 +123,18 @@ export const config = {
       caFile: process.env.GIGACHAT_CA_FILE || '',
       tokenRefreshSkewMs: num('GIGACHAT_TOKEN_SKEW_MS', 60_000),
     },
+  },
+
+  // Бот сообщества ВКонтакте (Bots Long Poll API).
+  // Токен — секрет: только .env, никогда не логируется и не отдаётся в API.
+  vk: {
+    enabled: bool('VK_BOT_ENABLED', false),
+    groupId: num('VK_BOT_GROUP_ID', 0),
+    token: process.env.VK_BOT_TOKEN || '',
+    apiVersion: process.env.VK_BOT_API_VERSION || '5.199',
+    adminIds: idList(process.env.VK_BOT_ADMIN_IDS),
+    waitSeconds: Math.min(90, Math.max(1, num('VK_BOT_POLL_WAIT', 25))),
+    timeZone: process.env.VK_BOT_TZ || 'Europe/Moscow',
   },
 
   // OCR (ТЗ 4.3.1)
