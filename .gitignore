@@ -1,0 +1,19 @@
+# Секреты и локальные данные — в репозиторий не попадают
+.env
+.env.local
+.env.*.local
+data/
+tmp/
+*.log
+certs/*.pem
+certs/*.crt
+
+# node_modules и системные файлы
+node_modules/
+.DS_Store
+Thumbs.db
+NUL
+
+# Отчёты и артефакты проверок
+eval/report.md
+coverage/
