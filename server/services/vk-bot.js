@@ -306,7 +306,7 @@ export function createVkBot({
       return formatSummary({ title: 'сегодня', fromIso, summary, users, timeZone });
     }
     if (command === 'week') {
-      const fromIso = startOfDaysAgo(7, now(), timeZone);
+      const fromIso = startOfDaysAgo(6, now(), timeZone);
       const [summary, users] = await Promise.all([
         usage.usageSummary({ since: fromIso }),
         usage.usageByUser({ since: fromIso, limit: 10 }),

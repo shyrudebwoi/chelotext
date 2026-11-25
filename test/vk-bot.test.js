@@ -7,6 +7,7 @@ import {
   formatRecent,
   formatSummary,
   startOfDay,
+  startOfDaysAgo,
   redactSecrets,
 } from '../server/services/vk-bot.js';
 
@@ -101,6 +102,13 @@ test('vk: начало дня в Москве', () => {
   assert.equal(
     startOfDay(new Date('2026-11-25T10:00:00.000Z'), 'Europe/Moscow'),
     '2026-11-24T21:00:00.000Z',
+  );
+});
+
+test('vk: неделя — 7 календарных дней включая сегодня', () => {
+  assert.equal(
+    startOfDaysAgo(6, new Date('2026-11-25T10:00:00.000Z'), 'Europe/Moscow'),
+    '2026-11-18T21:00:00.000Z',
   );
 });
 

@@ -212,7 +212,7 @@ curl -fsSL "https://github.com/docker/compose/releases/download/v2.29.7/docker-c
 chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 docker compose version
 
-cd /proj/chelotext
+cd /opt/chelotext
 docker compose -f deploy/docker-compose.yml up -d --force-recreate
 ```
 

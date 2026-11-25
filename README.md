@@ -100,7 +100,7 @@ npm start
 |---|---|
 | `npm start` | Запуск сервера на `:3000` (`node --no-warnings server/index.js`). |
 | `npm run dev` | То же, но с `--watch`. |
-| `npm test` | 140 тестов через `node --test` (`test/*.test.js`), включая e2e на временной БД, тесты GigaChat с мок-транспортом и тесты бота ВК. |
+| `npm test` | 141 тестов через `node --test` (`test/*.test.js`), включая e2e на временной БД, тесты GigaChat с мок-транспортом и тесты бота ВК. |
 | `npm run eval` | Прогон 18 эталонных текстов через движок правил; отчёт — `eval/report.md`, exit code 1 при провале сохранности. |
 | `npm run eval -- --levels` | Прогон уровней 1, 3 и 5. |
 | `npm run eval -- --json` | Машинный вывод вместо Markdown-отчёта. |
@@ -307,7 +307,7 @@ chelotext/
 ├─ docs/                    # TZ, PROMPT, context, design, HANDOFF, architecture, decisions
 ├─ api/                     # выжимки документации GigaChat и ProxyAPI (без ключей)
 ├─ eval/                    # eval/run.js, eval/texts/*.txt (18 текстов), eval/report.md
-├─ test/                    # 140 тестов, node:test
+├─ test/                    # 141 тестов, node:test
 ├─ scripts/                 # icons.js, check.js (lint), certs.js (скачивание CA)
 ├─ deploy/                  # Dockerfile + docker-compose.yml для запуска на сервере
 ├─ certs/                   # сертификат НУЦ Минцифры (в git не попадает)

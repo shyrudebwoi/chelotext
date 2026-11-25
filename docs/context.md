@@ -46,7 +46,7 @@
 | Данные | `data/` (SQLite, tessdata, `.session-secret`), в git не попадают |
 | LLM | GigaChat (`LLM_PROVIDER=gigachat`), запасные: `openai` (ProxyAPI), `ollama`, `rules` |
 | Ключи | Только в `.env` на сервере; в коде/логах/ответах/документации их нет |
-| Тесты | `npm test` — 140 тестов, `node:test`, без сети (GigaChat на мок-транспорте) |
+| Тесты | `npm test` — 141 тестов, `node:test`, без сети (GigaChat на мок-транспорте) |
 | Eval | `npm run eval` — 18 эталонных текстов, проверка сохранности |
 | Линт | `npm run lint` — синтаксис, запрет `console.log` в `server/`, обязательные файлы |
 | Деплой | `deploy/` — Docker Compose; HTTPS и домен — в Nginx Proxy Manager |
@@ -119,7 +119,7 @@ chelotext/
 ├─ docs/                       # TZ, PROMPT, design, context, architecture, decisions, HANDOFF
 ├─ api/                        # выжимки документации GigaChat и ProxyAPI (без ключей)
 ├─ eval/                       # run.js + 18 текстов; report.md генерируется и не коммитится
-├─ test/                       # 140 тестов на node:test
+├─ test/                       # 141 тестов на node:test
 ├─ scripts/                    # check.js (lint), certs.js (CA), icons.js
 ├─ certs/                      # russian_trusted_root_ca.crt (в git не попадает)
 ├─ data/                       # SQLite, tessdata, .session-secret (в git не попадает)
@@ -468,7 +468,7 @@ ProxyAPI платный. Документация — `api/ProxyAPI_*.md`.
 ## 12. Тесты, eval, линт
 
 ```bash
-npm.cmd test          # 140 тестов, node:test, ~2.5 c
+npm.cmd test          # 141 тестов, node:test, ~2.5 c
 npm.cmd run eval      # 18 текстов, отчёт eval/report.md, exit 1 при потере сущностей
 npm.cmd run lint      # синтаксис всех JS, запрет console.log в server/, обязательные файлы
 npm.cmd run certs     # скачать корневой PEM НУЦ Минцифры
@@ -567,7 +567,7 @@ docker compose -f deploy/docker-compose.yml up -d --build
 - Экспорт: TXT, MD, HTML, PDF, DOCX.
 - Frontend: SSR-страницы, PWA, адаптив, двухколоночный `/app`, редактор, история, настройки.
 - GigaChat реально проверен: OAuth, `chat/completions`, пайплайн с `llm.used: true`.
-- Тесты 140/140, eval 18/18, lint OK.
+- Тесты 141/141, eval 18/18, lint OK.
 - Документация: README, architecture, decisions (ADR-001…011), HANDOFF, context.
 - Деплой: Docker Compose (`deploy/`), HTTPS и домен — в Nginx Proxy Manager; пошаговая инструкция в `deploy/README.md`.
 - Репозиторий: приватный GitHub, ветка `master`, актуальный список коммитов — `git log --oneline`.
