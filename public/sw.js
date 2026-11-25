@@ -1,6 +1,7 @@
 // Service worker: кэш статики и офлайн-заглушка.
 // Важно: офлайн-обработка не в MVP (ТЗ 5), кэшируем только оболочку.
-const VERSION = 'chelotext-v1';
+// Меняйте версию при изменении статики: старый кэш удалится при активации.
+const VERSION = 'chelotext-v2';
 const STATIC_CACHE = `${VERSION}-static`;
 const PAGES_CACHE = `${VERSION}-pages`;
 

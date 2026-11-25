@@ -837,9 +837,8 @@ svg {
   border-left: 1px solid var(--c-line);
 }
 .diff__head {
-  position: sticky;
-  top: 64px;
-  z-index: 2;
+  /* Не sticky: заголовок — сосед скроллируемого .diff__body, а не его часть.
+     Иначе при прокрутке страницы он прилипал к шапке и наезжал на текст. */
   background: var(--c-soft);
   border-bottom: 1px solid var(--c-line);
   padding: var(--s-2) var(--s-4);

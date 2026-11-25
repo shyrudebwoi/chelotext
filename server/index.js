@@ -53,6 +53,11 @@ export function createApp() {
   });
 
   // Статика
+  // sw.js не кэшируем: иначе новая версия статики не подхватится вовремя.
+  app.get('/sw.js', (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.sendFile(path.join(ROOT, 'public/sw.js'));
+  });
   app.use('/fonts', express.static(path.join(ROOT, 'public/fonts'), { maxAge: '30d', immutable: true }));
   app.use('/icons', express.static(path.join(ROOT, 'public/icons'), { maxAge: '7d' }));
   app.use('/styles', express.static(path.join(ROOT, 'public/styles'), { maxAge: '1h' }));
