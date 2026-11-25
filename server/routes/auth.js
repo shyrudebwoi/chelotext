@@ -4,7 +4,7 @@ import { config } from '../config.js';
 import {
   createUser, authenticate, validateEmail, validatePassword, publicUser,
   createSession, destroySession, recordConsent, consentHistory, hasConsent,
-  deleteUserData, deleteUserAccount, destroyUserSessions,
+  deleteUserData, deleteUserAccount, destroyUserSessions, setThirdPartyConsent,
 } from '../services/users.js';
 import {
   setSessionCookie, clearSessionCookie, requireAuth, clientIp,
@@ -60,16 +60,21 @@ authRouter.post('/logout', express.json(), (req, res) => {
 
 // ---------- Согласие ПДн ----------
 authRouter.post('/consent', attachUser, requireAuth, express.json(), (req, res) => {
-  const { action = 'grant', policyVersion } = req.body || {};
+  const { action = 'grant', policyVersion, ageConfirmed, thirdPartyConsent } = req.body || {};
   if (!['grant', 'revoke'].includes(action)) {
     return res.status(400).json({ error: 'Неизвестное действие', code: 'invalid_action' });
   }
-  if (action === 'grant' && policyVersion && policyVersion !== config.policyVersion) {
-    return res.status(409).json({
-      error: 'Политика обновилась. Прочитай новую версию и подтверди снова',
-      code: 'policy_changed',
-      policyVersion: config.policyVersion,
-    });
+  if (action === 'grant') {
+    if (ageConfirmed !== true) {
+      return res.status(400).json({ error: 'Подтверди, что тебе есть 18 лет', code: 'age_required' });
+    }
+    if (policyVersion && policyVersion !== config.policyVersion) {
+      return res.status(409).json({
+        error: 'Политика обновилась. Прочитай новую версию и подтверди снова',
+        code: 'policy_changed',
+        policyVersion: config.policyVersion,
+      });
+    }
   }
 
   const consent = recordConsent(req.user.id, {
@@ -77,11 +82,14 @@ authRouter.post('/consent', attachUser, requireAuth, express.json(), (req, res) 
     userAgent: req.headers['user-agent'],
     policyVersion: config.policyVersion,
     action,
+    ageConfirmed: ageConfirmed === true,
+    thirdPartyConsent: thirdPartyConsent === true,
   });
 
   if (action === 'revoke') {
-    // Отзыв согласия = фактическое удаление данных (ТЗ 8).
+    // Отзыв согласия = фактическое удаление данных и остановка задач (ТЗ 8).
     deleteUserData(req.user.id);
+    clearSessionCookie(res);
     return res.json({
       ok: true,
       consent,
@@ -89,7 +97,23 @@ authRouter.post('/consent', attachUser, requireAuth, express.json(), (req, res) 
       message: 'Согласие отозвано, тексты удалены',
     });
   }
+  // Ротация сессии после изменения согласия: старые сессии больше не дают доступ.
+  destroyUserSessions(req.user.id);
+  const session = createSession(req.user.id, { ip: clientIp(req), userAgent: req.headers['user-agent'] });
+  setSessionCookie(res, session.id);
   return res.json({ ok: true, consent });
+});
+
+// Отдельное согласие на передачу текста провайдеру (можно отозвать, не теряя историю).
+authRouter.post('/third-party-consent', attachUser, requireAuth, express.json(), (req, res) => {
+  if (req.user.consent_status !== 'granted') {
+    return res.status(403).json({ error: 'Сначала нужно согласие на обработку данных', code: 'consent_required' });
+  }
+  if (typeof req.body?.allowed !== 'boolean') {
+    return res.status(400).json({ error: 'Укажи allowed: true или false', code: 'invalid_allowed' });
+  }
+  setThirdPartyConsent(req.user.id, req.body.allowed);
+  return res.json({ ok: true, thirdPartyConsent: req.body.allowed });
 });
 
 authRouter.get('/consent/history', attachUser, requireAuth, (req, res) => {

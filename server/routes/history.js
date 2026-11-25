@@ -4,7 +4,7 @@ import { config } from '../config.js';
 import { requireAuth, requireConsent } from '../middleware/index.js';
 import {
   listDocuments, countDocuments, deleteDocument, listJobs, exportStats,
-  purgeExpired,
+  purgeUserExpired,
 } from '../services/documents.js';
 import { publicUser, consentHistory, deleteUserData, hasConsent } from '../services/users.js';
 import { q } from '../db/index.js';
@@ -51,7 +51,7 @@ historyRouter.post('/settings/retention', express.json(), requireAuth, (req, res
 });
 
 historyRouter.post('/settings/purge', requireAuth, (req, res) => {
-  const result = purgeExpired(req.user.retention_days ?? config.retentionDays);
+  const result = purgeUserExpired(req.user.id, req.user.retention_days ?? config.retentionDays);
   res.json({ ok: true, ...result });
 });
 

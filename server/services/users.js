@@ -2,6 +2,9 @@
 import { q, now } from '../db/index.js';
 import { hashPassword, verifyPassword, randomToken, hmac, safeEqual } from '../lib/crypto.js';
 import { config } from '../config.js';
+import { cancelUserJobs } from '../jobs/queue.js';
+import { consentDocument, consentHash } from './consent.js';
+import { logPdAccess, deleteSubjectRequestsForEmail } from './personal-data.js';
 
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[a-zA-Zа-яА-Я]{2,}$/;
 
@@ -61,9 +64,15 @@ export function publicUser(user) {
     consentStatus: user.consent_status,
     consentAt: user.consent_at,
     consentPolicyVersion: user.consent_policy_version,
+    ageConfirmed: Boolean(user.age_confirmed),
+    thirdPartyConsent: Boolean(user.third_party_consent),
     retentionDays: user.retention_days ?? config.retentionDays,
     createdAt: user.created_at,
   };
+}
+
+export function hasThirdPartyConsent(user) {
+  return Boolean(user && user.consent_status === 'granted' && user.third_party_consent);
 }
 
 export function getUserById(id) {
@@ -113,36 +122,81 @@ export function pruneSessions() {
 }
 
 // ---------- Согласие ПДн ----------
-export function recordConsent(userId, { ip, userAgent, policyVersion = config.policyVersion, action = 'grant' } = {}) {
+export function recordConsent(userId, {
+  ip,
+  userAgent,
+  policyVersion = config.policyVersion,
+  action = 'grant',
+  ageConfirmed = false,
+  thirdPartyConsent = false,
+  consent = null,
+} = {}) {
+  if (!['grant', 'revoke'].includes(action)) {
+    throw Object.assign(new Error('Неизвестное действие'), { status: 400, code: 'invalid_action' });
+  }
+  if (action === 'grant' && ageConfirmed !== true) {
+    throw Object.assign(new Error('Подтверди, что тебе есть 18 лет'), { status: 400, code: 'age_required' });
+  }
   const timestamp = now();
+  const current = consentDocument();
+  const document = consent || (action === 'grant' ? { ...current, hash: consentHash(current) } : null);
   q.tx(() => {
     q.run(
-      'INSERT INTO consents (user_id, action, policy_version, at, ip, user_agent) VALUES (?,?,?,?,?,?)',
+      `INSERT INTO consents
+        (user_id, action, policy_version, at, ip, user_agent, consent_text_hash, operator, purposes, recipients, age_confirmed, third_party_consent)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
       userId,
       action,
       policyVersion,
       timestamp,
       ip ?? null,
       (userAgent ?? '').slice(0, 300),
+      document?.hash ?? null,
+      document?.operator ?? null,
+      JSON.stringify(document?.purposes ?? []),
+      JSON.stringify(document?.recipients ?? []),
+      ageConfirmed ? 1 : 0,
+      thirdPartyConsent ? 1 : 0,
     );
     if (action === 'grant') {
       q.run(
-        `UPDATE users SET consent_status = 'granted', consent_at = ?, consent_policy_version = ?, consent_ip = ?, updated_at = ? WHERE id = ?`,
+        `UPDATE users
+           SET consent_status = 'granted', consent_at = ?, consent_policy_version = ?, consent_ip = ?,
+               age_confirmed = 1, third_party_consent = ?, updated_at = ?
+         WHERE id = ?`,
         timestamp,
         policyVersion,
         ip ?? null,
+        thirdPartyConsent ? 1 : 0,
         timestamp,
         userId,
       );
     } else {
       q.run(
-        `UPDATE users SET consent_status = 'revoked', updated_at = ? WHERE id = ?`,
+        `UPDATE users SET consent_status = 'revoked', third_party_consent = 0, updated_at = ? WHERE id = ?`,
         timestamp,
         userId,
       );
     }
   });
+  logPdAccess({
+    actor: `user:${userId}`,
+    action: action === 'grant' ? 'consent.granted' : 'consent.revoked',
+    userId,
+    detail: `policy=${policyVersion} hash=${document?.hash ?? 'none'}`,
+  });
   return { status: action === 'grant' ? 'granted' : 'revoked', at: timestamp, policyVersion };
+}
+
+/** Разрешение на передачу текста провайдеру можно отозвать отдельно. */
+export function setThirdPartyConsent(userId, allowed) {
+  q.run('UPDATE users SET third_party_consent = ?, updated_at = ? WHERE id = ?', allowed ? 1 : 0, now(), userId);
+  logPdAccess({ actor: `user:${userId}`, action: 'third_party.consent.updated', userId, detail: allowed ? 'granted' : 'revoked' });
+}
+
+/** Для фоновой очистки: персональный срок хранения каждого пользователя. */
+export function listUsersForPurge() {
+  return q.all('SELECT id, retention_days FROM users ORDER BY id');
 }
 
 export function hasConsent(user) {
@@ -150,23 +204,29 @@ export function hasConsent(user) {
 }
 
 export function consentHistory(userId) {
-  return q.all('SELECT action, policy_version, at FROM consents WHERE user_id = ? ORDER BY id DESC LIMIT 50', userId);
+  return q
+    .all(
+      `SELECT action, policy_version, at, consent_text_hash, age_confirmed, third_party_consent
+         FROM consents WHERE user_id = ? ORDER BY id DESC LIMIT 50`,
+      userId,
+    )
+    .map((row) => ({
+      action: row.action,
+      policyVersion: row.policy_version,
+      at: row.at,
+      consentTextHash: row.consent_text_hash,
+      ageConfirmed: Boolean(row.age_confirmed),
+      thirdPartyConsent: Boolean(row.third_party_consent),
+    }));
 }
 
 // ---------- Удаление данных ----------
-export function deleteUserData(userId) {
+function deleteUserDataTx(userId, { includeAccount = false } = {}) {
+  // Сначала останавливаем рантайм: иначе задача продолжит отправлять текст в LLM после удаления.
+  cancelUserJobs(userId);
+  const user = getUserById(userId);
   q.tx(() => {
-    q.run('DELETE FROM exports WHERE user_id = ?', userId);
-    q.run('DELETE FROM edits WHERE user_id = ?', userId);
-    q.run('DELETE FROM jobs WHERE user_id = ?', userId);
-    q.run('DELETE FROM documents WHERE user_id = ?', userId);
-    q.run('DELETE FROM precheck_log WHERE user_id = ?', userId);
-    q.run('DELETE FROM llm_usage WHERE user_id = ?', userId);
-  });
-}
-
-export function deleteUserAccount(userId) {
-  q.tx(() => {
+    if (user?.email) deleteSubjectRequestsForEmail(user.email);
     q.run('DELETE FROM sessions WHERE user_id = ?', userId);
     q.run('DELETE FROM exports WHERE user_id = ?', userId);
     q.run('DELETE FROM edits WHERE user_id = ?', userId);
@@ -174,9 +234,25 @@ export function deleteUserAccount(userId) {
     q.run('DELETE FROM documents WHERE user_id = ?', userId);
     q.run('DELETE FROM precheck_log WHERE user_id = ?', userId);
     q.run('DELETE FROM llm_usage WHERE user_id = ?', userId);
-    q.run('DELETE FROM consents WHERE user_id = ?', userId);
-    q.run('DELETE FROM users WHERE id = ?', userId);
+    if (includeAccount) {
+      q.run('DELETE FROM consents WHERE user_id = ?', userId);
+      q.run('DELETE FROM users WHERE id = ?', userId);
+    }
   });
+  logPdAccess({
+    actor: `user:${userId}`,
+    action: includeAccount ? 'account.deleted' : 'user.data.deleted',
+    userId,
+    detail: includeAccount ? null : 'consent withdrawn or manual purge',
+  });
+}
+
+export function deleteUserData(userId) {
+  deleteUserDataTx(userId);
+}
+
+export function deleteUserAccount(userId) {
+  deleteUserDataTx(userId, { includeAccount: true });
 }
 
 // ---------- Cookie-подпись ----------

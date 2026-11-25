@@ -2,8 +2,10 @@
 // При росте нагрузки заменяется на внешний брокер без изменения API.
 import { config } from '../config.js';
 import { runPipeline, PipelineCancelled } from '../core/pipeline.js';
-import { getJobRaw, updateJob, isCancelRequested } from '../services/documents.js';
+import { getJobRaw, updateJob, isCancelRequested, requestCancel } from '../services/documents.js';
 import { safeRecordLlmUsage } from '../services/usage.js';
+import { emptyUsage, addUsage } from '../core/llm/usage.js';
+import { providerInfo } from '../core/llm/provider.js';
 import { parsePlainText, astToPlainText } from '../core/text/ast.js';
 import { q, now } from '../db/index.js';
 
@@ -25,6 +27,22 @@ export function cancelJobRuntime(jobId) {
   const canceller = cancellers.get(jobId);
   if (canceller) canceller();
   updateJob(jobId, { cancelRequested: true });
+}
+
+/** Отзыв согласия/удаление аккаунта обязаны остановить и очередь, и уже идущий рантайм. */
+export function cancelUserJobs(userId) {
+  const jobs = q.all(`SELECT id, status FROM jobs WHERE user_id = ? AND status IN ('queued','processing')`, userId);
+  for (const job of jobs) {
+    requestCancel(job.user_id, job.id);
+    cancelJobRuntime(job.id);
+    if (job.status === 'queued') {
+      for (let i = queue.length - 1; i >= 0; i -= 1) {
+        if (queue[i].jobId === job.id) queue.splice(i, 1);
+      }
+      updateJob(job.id, { status: 'cancelled', stage: 'cancelled', finishedAt: now() });
+    }
+  }
+  return jobs.length;
 }
 
 /**
@@ -63,12 +81,14 @@ async function runJob({ jobId, payload }) {
   cancellers.set(jobId, () => controller.abort());
 
   const isCancelled = () => isCancelRequested(jobId) || controller.signal.aborted;
+  const usage = emptyUsage();
+  let llmMeta = null;
 
   try {
     if (payload.kind === 'extract') {
-      await runExtractJob(jobId, payload, { isCancelled, userId: job.user_id });
+      llmMeta = await runExtractJob(jobId, payload, { isCancelled, usage });
     } else {
-      await runProcessJob(jobId, payload, { isCancelled, userId: job.user_id });
+      llmMeta = await runProcessJob(jobId, payload, { isCancelled, usage });
     }
   } catch (error) {
     if (error instanceof PipelineCancelled || error?.name === 'AbortError' || isCancelled()) {
@@ -83,12 +103,24 @@ async function runJob({ jobId, payload }) {
       });
     }
   } finally {
+    // Токены могли быть потрачены и до отмены/падения — учитываем их всегда.
+    // Если данные уже удалены по отзыву согласия, строк задачи нет — запись не нужна.
+    if (getJobRaw(jobId)) {
+      const info = providerInfo();
+      safeRecordLlmUsage({
+        userId: job.user_id,
+        jobId,
+        provider: llmMeta?.provider ?? info.provider,
+        model: llmMeta?.model ?? info.model,
+        usage,
+      });
+    }
     cancellers.delete(jobId);
     unregisterJobHandler(jobId);
   }
 }
 
-async function runProcessJob(jobId, payload, { isCancelled, userId }) {
+async function runProcessJob(jobId, payload, { isCancelled, usage }) {
   const options = payload.options || {};
   const onProgress = (stage) => {
     if (isCancelled()) return;
@@ -100,6 +132,7 @@ async function runProcessJob(jobId, payload, { isCancelled, userId }) {
     options,
     onProgress,
     isCancelled,
+    onUsage: (part) => addUsage(usage, part),
   });
 
   if (!result.ok) {
@@ -110,7 +143,7 @@ async function runProcessJob(jobId, payload, { isCancelled, userId }) {
       errorMessage: result.reason?.message || 'Текст не прошёл проверку',
       finishedAt: now(),
     });
-    return;
+    return null;
   }
 
   updateJob(jobId, {
@@ -125,16 +158,10 @@ async function runProcessJob(jobId, payload, { isCancelled, userId }) {
     promptVersion: result.llm.promptVersion,
     finishedAt: now(),
   });
-  safeRecordLlmUsage({
-    userId,
-    jobId,
-    provider: result.llm.provider,
-    model: result.llm.model,
-    usage: result.llm.usage,
-  });
+  return { provider: result.llm.provider, model: result.llm.model };
 }
 
-async function runExtractJob(jobId, payload, { isCancelled, userId }) {
+async function runExtractJob(jobId, payload, { isCancelled, usage }) {
   const { extractFile } = await import('../services/ingest.js');
   const step = (stage, progress) => {
     if (isCancelled()) return;
@@ -156,6 +183,7 @@ async function runExtractJob(jobId, payload, { isCancelled, userId }) {
       step(stage.key, Math.min(97, mapped));
     },
     isCancelled,
+    onUsage: (part) => addUsage(usage, part),
   });
 
   if (!result.ok) {
@@ -166,7 +194,7 @@ async function runExtractJob(jobId, payload, { isCancelled, userId }) {
       errorMessage: result.reason?.message || 'Текст не прошёл проверку',
       finishedAt: now(),
     });
-    return;
+    return null;
   }
 
   updateJob(jobId, {
@@ -180,13 +208,6 @@ async function runExtractJob(jobId, payload, { isCancelled, userId }) {
     llmModel: result.llm.model,
     promptVersion: result.llm.promptVersion,
     finishedAt: now(),
-  });
-  safeRecordLlmUsage({
-    userId,
-    jobId,
-    provider: result.llm.provider,
-    model: result.llm.model,
-    usage: result.llm.usage,
   });
 
   // Обновляем документ: сохраняем извлечённый текст и метаданные.
@@ -209,9 +230,9 @@ export function queueStats() {
   return { running, queued: queue.length, concurrency: config.jobConcurrency };
 }
 
-// Восстановление после падения: задачи, застрявшие в processing, помечаем failed.
+// Восстановление после падения: задачи в processing и queued больше не имеют рантайма.
 export function recoverStuckJobs() {
-  const stuck = q.all(`SELECT id FROM jobs WHERE status = 'processing'`);
+  const stuck = q.all(`SELECT id FROM jobs WHERE status IN ('processing','queued')`);
   for (const job of stuck) {
     updateJob(job.id, {
       status: 'failed',

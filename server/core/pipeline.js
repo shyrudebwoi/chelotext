@@ -34,8 +34,9 @@ const STAGES = {
  * @param {object} params.options — { r1, r2, r3, level }
  * @param {(stage: object) => void} [params.onProgress]
  * @param {() => boolean} [params.isCancelled]
+ * @param {(usage: object) => void} [params.onUsage] — расход токенов, в том числе до отмены/падения
  */
-export async function runPipeline({ text, options = {}, onProgress = () => {}, isCancelled = () => false }) {
+export async function runPipeline({ text, options = {}, onProgress = () => {}, isCancelled = () => false, onUsage = () => {} }) {
   const level = clampLevel(options.level);
   const modes = { r1: Boolean(options.r1), r2: Boolean(options.r2), r3: Boolean(options.r3) };
   const report = (stage, extra = {}) => onProgress({ ...stage, ...extra });
@@ -83,7 +84,10 @@ export async function runPipeline({ text, options = {}, onProgress = () => {}, i
         provider,
         onProgress: report,
         assertNotCancelled,
-        onUsage: (usage) => addUsage(llmUsage, usage),
+        onUsage: (usage) => {
+          addUsage(llmUsage, usage);
+          onUsage(usage);
+        },
       });
       resultAst = pass.ast;
       llmUsed = pass.used > 0;

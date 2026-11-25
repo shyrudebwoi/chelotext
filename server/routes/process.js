@@ -9,7 +9,7 @@ import {
   getDocument, saveRevision, listRevisions, getRevision, logExport, logBlockedAttempt,
   activeJobsCount, mapJob, getJobRaw,
 } from '../services/documents.js';
-import { enqueueJob } from '../jobs/queue.js';
+import { enqueueJob, cancelJobRuntime } from '../jobs/queue.js';
 import { runPipeline } from '../core/pipeline.js';
 import { precheck } from '../core/precheck.js';
 import { buildLineDiff, diffSummary } from '../core/diff.js';
@@ -28,15 +28,30 @@ const upload = multer({
 const processLimiter = rateLimitMiddleware({ name: 'process', limit: config.rateLimit.processPerHour, windowMs: 3600_000 });
 const uploadLimiter = rateLimitMiddleware({ name: 'upload', limit: config.rateLimit.uploadPerHour, windowMs: 3600_000 });
 
+// multipart присылает строки 'true'/'false': Boolean('false') === true — ловушка для согласия.
+const parseFlag = (value) => value === true || value === 1 || value === '1' || value === 'true';
 const normalizeOptions = (body = {}) => ({
-  r1: Boolean(body.r1),
-  r2: Boolean(body.r2),
-  r3: Boolean(body.r3),
+  r1: parseFlag(body.r1),
+  r2: parseFlag(body.r2),
+  r3: parseFlag(body.r3),
   level: Math.min(5, Math.max(1, Math.round(Number(body.level) || 3))),
 });
 
+// Передача текста третьему лицу требует отдельного согласия (ст. 9 152-ФЗ).
+const requireThirdPartyForLlm = (req, res, next) => {
+  const raw = req.body?.options ?? req.body ?? {};
+  const llmOn = config.llm.enabled && config.llm.provider !== 'rules';
+  if (parseFlag(raw.r2) && llmOn && !req.user.third_party_consent) {
+    return res.status(403).json({
+      error: 'Для работы с моделью нужно отдельное согласие на передачу текста провайдеру',
+      code: 'third_party_consent_required',
+    });
+  }
+  return next();
+};
+
 // ---------- Обработка вставленного текста ----------
-processRouter.post('/process', processLimiter, express.json({ limit: '4mb' }), requireAuth, requireConsent, async (req, res) => {
+processRouter.post('/process', processLimiter, express.json({ limit: '4mb' }), requireAuth, requireConsent, requireThirdPartyForLlm, async (req, res) => {
   const { text, options } = req.body || {};
   const limit = checkCharLimit(text);
   if (!limit.ok) {
@@ -143,9 +158,12 @@ processRouter.post('/process', processLimiter, express.json({ limit: '4mb' }), r
 });
 
 // ---------- Загрузка файла ----------
-processRouter.post('/process/file', uploadLimiter, upload.single('file'), requireAuth, requireConsent, async (req, res) => {
+processRouter.post('/process/file', uploadLimiter, upload.single('file'), requireAuth, requireConsent, requireThirdPartyForLlm, async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Файл не пришёл', code: 'no_file' });
   const opts = normalizeOptions(req.body || {});
+  if (!opts.r1 && !opts.r2 && !opts.r3) {
+    return res.status(400).json({ error: 'Включи хотя бы один режим', code: 'no_modes' });
+  }
 
   try {
     const extracted = await extractFile(req.file);
@@ -236,10 +254,13 @@ processRouter.post('/process/file', uploadLimiter, upload.single('file'), requir
 });
 
 // ---------- Загрузка по ссылке ----------
-processRouter.post('/process/url', processLimiter, express.json(), requireAuth, requireConsent, async (req, res) => {
+processRouter.post('/process/url', processLimiter, express.json(), requireAuth, requireConsent, requireThirdPartyForLlm, async (req, res) => {
   const { url, options } = req.body || {};
   if (!url) return res.status(400).json({ error: 'Вставь ссылку', code: 'no_url' });
   const opts = normalizeOptions(options);
+  if (!opts.r1 && !opts.r2 && !opts.r3) {
+    return res.status(400).json({ error: 'Включи хотя бы один режим', code: 'no_modes' });
+  }
   try {
     const extracted = await extractUrlText(url);
     const limit = checkCharLimit(extracted.text);
@@ -318,11 +339,13 @@ processRouter.get('/jobs/:id', requireAuth, (req, res) => {
 });
 
 processRouter.post('/jobs/:id/cancel', requireAuth, (req, res) => {
-  const result = requestCancel(req.user.id, Number(req.params.id));
+  const jobId = Number(req.params.id);
+  const result = requestCancel(req.user.id, jobId);
   if (!result.ok) {
     if (result.code === 'not_found') return res.status(404).json({ error: 'Задача не найдена', code: 'not_found' });
     return res.status(409).json({ error: 'Задача уже завершена', code: result.code, status: result.status });
   }
+  cancelJobRuntime(jobId);
   res.json({ ok: true, status: 'cancelling' });
 });
 

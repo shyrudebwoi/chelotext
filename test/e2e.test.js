@@ -126,7 +126,11 @@ test('e2e: обработка без согласия — 403', async () => {
 });
 
 test('e2e: согласие выдаётся и отзывается', async () => {
-  const grant = await api('POST', '/api/auth/consent', { action: 'grant' });
+  const grant = await api('POST', '/api/auth/consent', {
+    action: 'grant',
+    ageConfirmed: true,
+    thirdPartyConsent: true,
+  });
   assert.equal(grant.status, 200);
   assert.equal(grant.json.ok, true);
 
@@ -245,7 +249,11 @@ test('e2e: чужой job недоступен (404)', async () => {
   jar.clear();
   const reg = await api('POST', '/api/auth/register', { email: 'other@example.com', password: 'testpass123' });
   assert.equal(reg.status, 201);
-  await api('POST', '/api/auth/consent', { action: 'grant' });
+  await api('POST', '/api/auth/consent', {
+    action: 'grant',
+    ageConfirmed: true,
+    thirdPartyConsent: true,
+  });
 
   const { status } = await api('GET', `/api/jobs/${jobId}`);
   assert.equal(status, 404);
@@ -272,4 +280,72 @@ test('e2e: кнопка выхода есть на странице и API ра�
   const me = await api('GET', '/api/auth/me');
   assert.equal(me.status, 200);
   assert.equal(me.json.user, null);
+});
+
+test('e2e: CSRF отклоняет изменение без X-Requested-With', async () => {
+  const response = await fetch(`${baseUrl}/api/pd/request`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'Тест', email: 'csrf@example.com', kind: 'other' }),
+  });
+  assert.equal(response.status, 403);
+  const json = await response.json();
+  assert.equal(json.code, 'csrf');
+});
+
+test('e2e: обращение субъекта ПДн принимается и статус доступен по номеру', async () => {
+  const created = await api('POST', '/api/pd/request', {
+    name: 'Иван Иванов',
+    email: 'subject@example.com',
+    kind: 'access',
+    comment: 'Какие данные хранятся?',
+  });
+  assert.equal(created.status, 201);
+  assert.ok(created.json.ticket);
+  assert.ok(created.json.dueAt);
+
+  const status = await api('GET', `/api/pd/request/${created.json.ticket}?email=subject%40example.com`);
+  assert.equal(status.status, 200);
+  assert.equal(status.json.request.status, 'received');
+  assert.equal(status.json.request.kind, 'access');
+
+  const page = await api('GET', '/legal/personal-data', undefined, { raw: true });
+  assert.equal(page.status, 200);
+  const html = await page.text();
+  assert.match(html, /pd-status-form/);
+  assert.match(html, /\/js\/pages\/legal\.js/);
+});
+
+test('e2e: политика описывает оператора-заглушку и локализацию', async () => {
+  const response = await api('GET', '/legal/privacy', undefined, { raw: true });
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /Оператор сервиса «Челотекст»/);
+  assert.match(html, /Российская Федерация/);
+  assert.match(html, /Форма субъекта ПДн/);
+});
+
+test('e2e: согласие без 18+ не принимается, отдельное согласие переключается', async () => {
+  const reg = await api('POST', '/api/auth/register', {
+    email: 'legal@example.com',
+    password: 'testpass123',
+  });
+  assert.equal(reg.status, 201);
+
+  const noAge = await api('POST', '/api/auth/consent', { action: 'grant' });
+  assert.equal(noAge.status, 400);
+  assert.equal(noAge.json.code, 'age_required');
+
+  const grant = await api('POST', '/api/auth/consent', {
+    action: 'grant',
+    ageConfirmed: true,
+    thirdPartyConsent: true,
+  });
+  assert.equal(grant.status, 200);
+
+  const off = await api('POST', '/api/auth/third-party-consent', { allowed: false });
+  assert.equal(off.status, 200);
+  const me = await api('GET', '/api/auth/me');
+  assert.equal(me.json.user.thirdPartyConsent, false);
+  assert.equal(me.json.user.consentStatus, 'granted');
 });

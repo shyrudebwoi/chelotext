@@ -143,6 +143,50 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_llm_usage_user ON llm_usage(user_id, created_at DESC);
     `,
   },
+  {
+    version: 3,
+    name: 'personal_data',
+    up(database) {
+      const columns = (table) => new Set(database.prepare(`PRAGMA table_info(${table})`).all().map((row) => row.name));
+      const addColumn = (table, name, definition) => {
+        if (!columns(table).has(name)) database.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
+      };
+      addColumn('users', 'age_confirmed', 'INTEGER NOT NULL DEFAULT 0');
+      addColumn('users', 'third_party_consent', 'INTEGER NOT NULL DEFAULT 0');
+      addColumn('consents', 'consent_text_hash', 'TEXT');
+      addColumn('consents', 'operator', 'TEXT');
+      addColumn('consents', 'purposes', 'TEXT');
+      addColumn('consents', 'recipients', 'TEXT');
+      addColumn('consents', 'age_confirmed', 'INTEGER NOT NULL DEFAULT 0');
+      addColumn('consents', 'third_party_consent', 'INTEGER NOT NULL DEFAULT 0');
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS subject_requests (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          public_id TEXT NOT NULL UNIQUE,
+          email TEXT NOT NULL,
+          name TEXT,
+          kind TEXT NOT NULL,
+          text TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'received',
+          created_at TEXT NOT NULL,
+          due_at TEXT NOT NULL,
+          resolved_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_subject_requests_created ON subject_requests(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_subject_requests_email ON subject_requests(email);
+
+        CREATE TABLE IF NOT EXISTS pd_access_log (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          actor TEXT NOT NULL,
+          action TEXT NOT NULL,
+          user_id INTEGER,
+          detail TEXT,
+          created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_pd_access_created ON pd_access_log(created_at DESC);
+      `);
+    },
+  },
 ];
 
 export function getDb() {
@@ -163,7 +207,8 @@ function migrate(database) {
     if (applied.has(migration.version)) continue;
     database.exec('BEGIN');
     try {
-      database.exec(migration.sql);
+      if (migration.up) migration.up(database);
+      else database.exec(migration.sql);
       database.prepare('INSERT INTO schema_migrations(version, name, applied_at) VALUES (?,?,?)')
         .run(migration.version, migration.name, new Date().toISOString());
       database.exec('COMMIT');

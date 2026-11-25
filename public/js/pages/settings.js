@@ -19,6 +19,11 @@ async function load() {
     if (infoOcr) {
       infoOcr.textContent = data.ocr.enabled ? `включён · ${data.ocr.languages.join('+')}` : 'выключен';
     }
+    const thirdParty = document.getElementById('third-party-toggle');
+    if (thirdParty) {
+      thirdParty.checked = Boolean(data.user?.thirdPartyConsent);
+      thirdParty.disabled = Boolean(data.consentRequired);
+    }
   } catch (error) {
     toast(error.message, 'error');
   }
@@ -36,6 +41,17 @@ document.getElementById('revoke-consent')?.addEventListener('click', async () =>
     toast('Согласие отозвано, тексты удалены', 'success');
     setTimeout(() => (window.location.href = '/start'), 1200);
   } catch (error) {
+    toast(error.message, 'error');
+  }
+});
+
+document.getElementById('third-party-toggle')?.addEventListener('change', async (event) => {
+  const allowed = event.target.checked;
+  try {
+    await api('/api/auth/third-party-consent', { method: 'POST', body: JSON.stringify({ allowed }) });
+    toast(allowed ? 'Передача текста разрешена' : 'Передача текста запрещена', 'success', 2500);
+  } catch (error) {
+    event.target.checked = !allowed;
     toast(error.message, 'error');
   }
 });

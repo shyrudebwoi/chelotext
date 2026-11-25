@@ -1,6 +1,7 @@
 // Страницы (SSR). Интерактивность — в /public/js/pages/*.js.
 import { config } from '../config.js';
 import { icon, illustration, esc } from '../render.js';
+import { consentDocument } from '../services/consent.js';
 
 const nav = (user) => user;
 
@@ -123,25 +124,30 @@ function start({ user }) {
     return { title: 'Начать', body };
   }
 
+  const consent = consentDocument();
   const body = `
 <section class="section">
   <div class="container" style="max-width:760px">
     <h1>Один шаг — и можно работать</h1>
-    <p class="muted" style="font-size:19px">Нужно твоё согласие на обработку данных. Без него сервис не сможет обработать текст.</p>
+    <p class="muted" style="font-size:19px">Нужно отдельное согласие на обработку данных. Без него сервис не сможет обработать текст.</p>
     <form class="card mt-8" id="consent-form" novalidate>
       <h3 class="card__title">Согласие на обработку персональных данных</h3>
-      <p class="small">Я согласен на обработку моих данных: адреса почты и текстов, которые я загружаю. Данные нужны, чтобы сервис работал.</p>
-      <ul class="small muted">
-        <li>Оператор: ${esc(config.operator.name)}</li>
-        <li>Версия политики: ${esc(config.policyVersion)}</li>
-        <li>Хранение: ${config.retentionDays} дней, если не удалить раньше</li>
-      </ul>
-      <label class="row" style="align-items:flex-start;gap:12px;margin:var(--s-6) 0">
+      <p class="small muted mb-4">Отдельный документ (не часть оферты). Версия ${esc(consent.version)}. Оператор: ${esc(consent.operator)}.</p>
+      <div class="prose small" style="white-space:pre-wrap;max-height:320px;overflow-y:auto;border:1px solid var(--c-border);border-radius:var(--r-md);padding:var(--s-4)" tabindex="0">${esc(consent.text)}</div>
+      <label class="row" style="align-items:flex-start;gap:12px;margin:var(--s-6) 0 0">
         <input type="checkbox" id="consent-checkbox" name="consent" style="width:22px;height:22px;margin-top:2px;accent-color:#0F766E">
-        <span>Я прочитал и согласен с <a href="/legal/privacy" target="_blank" rel="noopener">политикой обработки данных</a> и <a href="/legal/terms" target="_blank" rel="noopener">офертой</a>.</span>
+        <span>Прочитал согласие и даю его на обработку моих данных. Также ознакомлен с <a href="/legal/privacy" target="_blank" rel="noopener">политикой</a> и <a href="/legal/terms" target="_blank" rel="noopener">офертой</a>.</span>
       </label>
-      <p class="field__error hidden" id="consent-error" role="alert">${icon('alert', 16)}<span>Без согласия не получится — поставь галочку.</span></p>
-      <button class="btn btn--lg btn--block" type="submit" id="consent-submit" disabled>Продолжить</button>
+      <label class="row" style="align-items:flex-start;gap:12px;margin:var(--s-4) 0 0">
+        <input type="checkbox" id="age-checkbox" name="age" style="width:22px;height:22px;margin-top:2px;accent-color:#0F766E">
+        <span>Мне исполнилось 18 лет, я дееспособен.</span>
+      </label>
+      <label class="row" style="align-items:flex-start;gap:12px;margin:var(--s-4) 0">
+        <input type="checkbox" id="third-party-checkbox" name="thirdParty" style="width:22px;height:22px;margin-top:2px;accent-color:#0F766E">
+        <span>Отдельно согласен на передачу текста провайдеру модели, если он включён на сервере. Без этой галочки работают только локальные правила. Отозвать можно в <a href="/settings">настройках</a>.</span>
+      </label>
+      <p class="field__error hidden" id="consent-error" role="alert">${icon('alert', 16)}<span>Поставь галочки согласия и 18+ — без них продолжить нельзя.</span></p>
+      <button class="btn btn--lg btn--block" type="submit" id="consent-submit" data-policy-version="${esc(consent.version)}" disabled>Продолжить</button>
       <p class="small muted text-center mt-4 mb-0">Согласие можно отозвать в любой момент в <a href="/settings">настройках</a>. Тогда мы удалим твои тексты.</p>
     </form>
   </div>
@@ -490,6 +496,15 @@ function settingsPage({ user }) {
     </div>
 
     <div class="card mt-6">
+      <h3 class="card__title">Передача текста провайдеру</h3>
+      <label class="row" style="align-items:flex-start;gap:12px">
+        <input type="checkbox" id="third-party-toggle" style="width:22px;height:22px;accent-color:#0F766E" ${user.thirdPartyConsent ? 'checked' : ''}>
+        <span class="small">Разрешить отправку текста модели. Можно отозвать отдельно — тексты и история останутся.</span>
+      </label>
+      <p class="tiny muted mt-4 mb-0">Провайдер: ${esc(config.llm.provider)}. Без галочки доступны только локальные правила.</p>
+    </div>
+
+    <div class="card mt-6">
       <h3 class="card__title">Хранение</h3>
       <label class="field">
         <span class="field__label">Сколько дней хранить тексты</span>
@@ -529,45 +544,62 @@ function settingsPage({ user }) {
 
 // ---------- Правовые ----------
 function legalPrivacy() {
+  const doc = consentDocument();
   const body = `
 <section class="section" style="padding-top:var(--s-6)">
   <div class="container">
     <h1>Политика обработки данных</h1>
     <p class="muted">Версия ${esc(config.policyVersion)}</p>
     <div class="prose mt-8">
-      <p>Здесь простым языком: какие данные мы берём, зачем, сколько храним и как удалить.</p>
+      <p>Простыми словами: какие данные берём, зачем, сколько храним, кому передаём и как удалить. Отдельный текст согласия размещён на шаге <a href="/start">входа</a> и не является частью оферты.</p>
+
+      <h2>Оператор и ответственный</h2>
+      <ul>
+        <li>Оператор: ${esc(config.operator.name)}.</li>
+        <li>Адрес: ${esc(config.operator.address)}.</li>
+        <li>ИНН: ${esc(config.operator.inn)}.</li>
+        <li>Ответственный за обработку ПДн: ${esc(config.operator.responsible)}.</li>
+        <li>Почта для обращений: ${esc(config.operator.email)}.</li>
+      </ul>
 
       <h2>Какие данные</h2>
       <ul>
-        <li>Адрес почты и пароль (пароль хранится только в виде хеша — прочитать его нельзя).</li>
-        <li>Тексты, которые ты загружаешь, и результаты их обработки.</li>
-        <li>Факт согласия: время, версия политики, IP-адрес.</li>
+        ${doc.categories.map((item) => `<li>${esc(item)}</li>`).join('')}
       </ul>
+      <p>Чужие персональные данные в загружаемых текстах загружающий обязан проверять сам: сервис не знает, кто именно упомянут в тексте.</p>
 
-      <h2>Зачем</h2>
-      <ul>
-        <li>Чтобы пускать тебя в аккаунт.</li>
-        <li>Чтобы показывать историю твоих текстов и давать их править.</li>
-        <li>Чтобы соблюсти закон о персональных данных (152-ФЗ) — нужен факт согласия.</li>
-      </ul>
+      <h2>Цели и правовое основание</h2>
+      <p>Основание — отдельное согласие (ст. 6 ч. 1 п. 1, ст. 9 152-ФЗ). Цели:</p>
+      <ul>${doc.purposes.map((item) => `<li>${esc(item)}</li>`).join('')}</ul>
 
-      <h2>Сколько храним</h2>
-      <p>По умолчанию ${config.retentionDays} дней. Срок можно поменять в настройках или удалить всё раньше.</p>
+      <h2>Действия с данными</h2>
+      <p>${esc(doc.actions.join(', '))}.</p>
 
       <h2>Кому передаём</h2>
-      <p>Никому для рекламы и не продаём. Текст уходит модели только если она включена на сервере. По умолчанию работают только правила — текст не покидает сервер.</p>
+      <ul>${doc.recipients.map((item) => `<li>${esc(item)}</li>`).join('')}</ul>
+      <p>Мы не продаём данные и не используем их для рекламы. Передача текста модели возможна только при отдельной галочке; без неё работают локальные правила. Email и расход токенов попадают в отчёты VK-бота только администраторам сообщества.</p>
+
+      <h2>Место обработки и трансграничная передача</h2>
+      <p>Основная база: ${esc(config.personalData.localization)}. При включении зарубежного провайдера нужна отдельная процедура по ст. 12 152-ФЗ: ${esc(config.personalData.rknNotice)}.</p>
+
+      <h2>Сколько храним</h2>
+      <p>Тексты и результаты — по умолчанию ${config.retentionDays} дней; срок можно изменить в настройках (1–365 дней) либо удалить всё сразу. Обращения субъектов — ${config.personalData.subjectRequestRetentionDays} дней, журнал доступа — ${config.personalData.accessLogRetentionDays} дней. Сессии истекают автоматически.</p>
 
       <h2>Твои права</h2>
       <ul>
-        <li>Посмотреть, что мы храним (кнопка «Скачать мои данные»).</li>
-        <li>Удалить отдельный текст.</li>
-        <li>Отозвать согласие — тогда удалим все тексты.</li>
+        <li>Скачать свои данные — в настройках.</li>
+        <li>Удалить отдельный текст — удаление физическое, а не пометка «удалён».</li>
+        <li>Отозвать согласие — тексты и связанные данные удаляются, активные задачи останавливаются.</li>
+        <li>Отозвать отдельное согласие на передачу текста — в настройках, без потери истории.</li>
         <li>Удалить аккаунт целиком.</li>
+        <li>Направить обращение и посмотреть его статус — <a href="/legal/personal-data">форма субъекта ПДн</a>. Ответ в течение ${config.personalData.subjectRequestSlaDays} рабочих дней с правом продления на 5 по закону.</li>
       </ul>
 
+      <h2>Безопасность и инциденты</h2>
+      <p>Пароли — scrypt с солью, cookie подписаны и HttpOnly, передача защищена TLS через обратный прокси, доступ к API разделён по пользователям, изменяющие запросы проверяются на CSRF. При подозрении на утечку пиши на ${esc(config.operator.email)}: контакт для инцидентов — ${esc(config.operator.responsible)}.</p>
+
       <h2>Связаться</h2>
-      <p>Оператор: ${esc(config.operator.name)}. Почта: ${esc(config.operator.email)}.</p>
-      <p>Форма обращения субъекта ПДн — <a href="/legal/personal-data">здесь</a>.</p>
+      <p>Оператор: ${esc(config.operator.name)}. Почта: ${esc(config.operator.email)}. Адрес: ${esc(config.operator.address)}.</p>
     </div>
   </div>
 </section>`;
@@ -610,7 +642,7 @@ function legalPersonalData() {
 <section class="section" style="padding-top:var(--s-6)">
   <div class="container" style="max-width:760px">
     <h1>Форма обращения субъекта ПДн</h1>
-    <p class="muted">Напиши нам — ответим в срок по закону.</p>
+    <p class="muted">Обращение принимается сразу: получишь номер и срок ответа. Ответим на указанную почту в течение ${config.personalData.subjectRequestSlaDays} рабочих дней (с правом продления на 5 по закону).</p>
     <form class="card mt-6" id="pd-form" novalidate>
       <label class="field">
         <span class="field__label">Кто ты</span>
@@ -631,10 +663,24 @@ function legalPersonalData() {
       </label>
       <label class="field">
         <span class="field__label">Комментарий</span>
-        <textarea class="textarea" name="comment" id="pd-comment" rows="4"></textarea>
+        <textarea class="textarea" name="comment" id="pd-comment" rows="4" maxlength="2000"></textarea>
       </label>
-      <button class="btn btn--lg btn--block" type="submit">Отправить</button>
-      <p class="tiny muted text-center mt-4 mb-0">Пока форма не подключена к отправке писем: сохрани текст и пришли на ${esc(config.operator.email)}.</p>
+      <button class="btn btn--lg btn--block" type="submit" id="pd-submit">Отправить</button>
+      <p class="tiny muted text-center mt-4 mb-0">Оператор: ${esc(config.operator.name)} · ${esc(config.operator.email)}</p>
+      <div id="pd-result" class="banner banner--info mt-6 hidden" role="status"></div>
+    </form>
+    <form class="card mt-6" id="pd-status-form" novalidate>
+      <h3 class="card__title">Проверить статус</h3>
+      <label class="field">
+        <span class="field__label">Номер обращения</span>
+        <input class="input" id="pd-status-ticket" autocomplete="off" required>
+      </label>
+      <label class="field">
+        <span class="field__label">Почта из обращения</span>
+        <input class="input" type="email" id="pd-status-email" autocomplete="email" required>
+      </label>
+      <button class="btn btn--block" type="submit">Проверить</button>
+      <div id="pd-status-result" class="banner banner--info mt-6 hidden" role="status"></div>
     </form>
   </div>
 </section>`;

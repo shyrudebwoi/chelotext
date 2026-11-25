@@ -87,6 +87,16 @@ export const config = {
   // Хранение (ТЗ 8: минимизация и настраиваемый срок)
   retentionDays: num('RETENTION_DAYS', 30),
 
+  // Персональные данные: сроки обращений субъектов и журнала доступа.
+  personalData: {
+    subjectRequestSlaDays: num('PD_REQUEST_SLA_DAYS', 10),
+    subjectRequestRetentionDays: num('PD_REQUEST_RETENTION_DAYS', 1095),
+    accessLogRetentionDays: num('PD_ACCESS_LOG_RETENTION_DAYS', 365),
+    // Заглушки: заменить на реальные реквизиты до публичного запуска.
+    localization: process.env.PD_LOCALIZATION || 'Российская Федерация (уточнить у владельца VDS)',
+    rknNotice: process.env.PD_RKN_NOTICE || 'Уведомление Роскомнадзора — подготовить до запуска',
+  },
+
   // Rate limit
   rateLimit: {
     loginPerHour: num('RL_LOGIN_PER_HOUR', 10),
@@ -146,10 +156,14 @@ export const config = {
     maxPages: num('OCR_MAX_PAGES', 50),
   },
 
-  policyVersion: process.env.POLICY_VERSION || '2026-11-24',
+  policyVersion: process.env.POLICY_VERSION || '2026-11-25',
   operator: {
     name: process.env.OPERATOR_NAME || 'Оператор сервиса «Челотекст»',
     email: process.env.OPERATOR_EMAIL || 'privacy@chelotext.local',
+    // Заглушки юридических реквизитов — допустимы по текущей задаче.
+    address: process.env.OPERATOR_ADDRESS || 'Адрес оператора — указать до публичного запуска',
+    inn: process.env.OPERATOR_INN || 'ИНН — указать до публичного запуска',
+    responsible: process.env.PD_RESPONSIBLE || 'Ответственный за обработку ПДн — указать до публичного запуска',
   },
 };
 

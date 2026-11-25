@@ -29,7 +29,7 @@
   **R3** — структурирование. Любая комбинация, включая один режим.
 - Ползунок глубины **1…5**, по умолчанию 3.
 - Вход: до **100 000 знаков**; PDF — **100 000 знаков или 50 страниц** (что раньше); файл до **25 МБ**.
-- Согласие на обработку ПДн обязательно: без него защищённые API отдают **403**.
+- Согласие на обработку ПДн обязательно и отделено от оферты: без него защищённые API отдают **403**. Требуется подтверждение 18+; передача текста провайдеру — отдельная галочка. Обращения субъектов принимает `/legal/personal-data` (API `/api/pd/request`).
 - Скан-PDF всегда обрабатывается **асинхронно** (OCR), с прогрессом и отменой.
 - Бюджет ≈ 0: бесплатный GigaChat для физлиц, self-hosted Tesseract, никаких платных очередей.
 
@@ -46,7 +46,7 @@
 | Данные | `data/` (SQLite, tessdata, `.session-secret`), в git не попадают |
 | LLM | GigaChat (`LLM_PROVIDER=gigachat`), запасные: `openai` (ProxyAPI), `ollama`, `rules` |
 | Ключи | Только в `.env` на сервере; в коде/логах/ответах/документации их нет |
-| Тесты | `npm test` — 141 тестов, `node:test`, без сети (GigaChat на мок-транспорте) |
+| Тесты | `npm test` — 156 тестов, `node:test`, без сети (GigaChat на мок-транспорте) |
 | Eval | `npm run eval` — 18 эталонных текстов, проверка сохранности |
 | Линт | `npm run lint` — синтаксис, запрет `console.log` в `server/`, обязательные файлы |
 | Деплой | `deploy/` — Docker Compose; HTTPS и домен — в Nginx Proxy Manager |
@@ -91,8 +91,11 @@ chelotext/
 │  ├─ routes/auth.js           # регистрация, вход, согласие, удаление аккаунта
 │  ├─ routes/process.js        # обработка paste/file/url, jobs, ревизии, экспорт
 │  ├─ routes/history.js        # история документов, настройки хранения, purge
-│  ├─ services/users.js        # пользователи, сессии, согласия
-│  ├─ services/documents.js    # документы, задачи, ревизии, экспорт-лог, precheck-лог
+│  ├─ routes/personal-data.js  # обращения субъектов ПДн, проверка статуса
+│  ├─ services/users.js        # пользователи, сессии, согласия, возраст, удаление
+│  ├─ services/consent.js      # отдельный текст согласия и его хеш
+│  ├─ services/personal-data.js # обращения субъектов, журнал доступа, сроки
+│  ├─ services/documents.js    # документы, задачи, ревизии, экспорт-лог, персональный purge
 │  ├─ services/ingest.js       # приём текста, лимиты, выбор sync/async, файлы, URL
 │  ├─ jobs/queue.js            # очередь: приоритеты, прогресс, отмена, OCR
 │  ├─ core/pipeline.js         # precheck → rules → LLM → integrity → AST
@@ -119,7 +122,7 @@ chelotext/
 ├─ docs/                       # TZ, PROMPT, design, context, architecture, decisions, HANDOFF
 ├─ api/                        # выжимки документации GigaChat и ProxyAPI (без ключей)
 ├─ eval/                       # run.js + 18 текстов; report.md генерируется и не коммитится
-├─ test/                       # 141 тестов на node:test
+├─ test/                       # 156 тестов на node:test
 ├─ scripts/                    # check.js (lint), certs.js (CA), icons.js
 ├─ certs/                      # russian_trusted_root_ca.crt (в git не попадает)
 ├─ data/                       # SQLite, tessdata, .session-secret (в git не попадает)
@@ -468,7 +471,7 @@ ProxyAPI платный. Документация — `api/ProxyAPI_*.md`.
 ## 12. Тесты, eval, линт
 
 ```bash
-npm.cmd test          # 141 тестов, node:test, ~2.5 c
+npm.cmd test          # 156 тестов, node:test, ~2.5 c
 npm.cmd run eval      # 18 текстов, отчёт eval/report.md, exit 1 при потере сущностей
 npm.cmd run lint      # синтаксис всех JS, запрет console.log в server/, обязательные файлы
 npm.cmd run certs     # скачать корневой PEM НУЦ Минцифры
@@ -567,7 +570,7 @@ docker compose -f deploy/docker-compose.yml up -d --build
 - Экспорт: TXT, MD, HTML, PDF, DOCX.
 - Frontend: SSR-страницы, PWA, адаптив, двухколоночный `/app`, редактор, история, настройки.
 - GigaChat реально проверен: OAuth, `chat/completions`, пайплайн с `llm.used: true`.
-- Тесты 141/141, eval 18/18, lint OK.
+- Тесты 142/142, eval 18/18, lint OK.
 - Документация: README, architecture, decisions (ADR-001…011), HANDOFF, context.
 - Деплой: Docker Compose (`deploy/`), HTTPS и домен — в Nginx Proxy Manager; пошаговая инструкция в `deploy/README.md`.
 - Репозиторий: приватный GitHub, ветка `master`, актуальный список коммитов — `git log --oneline`.

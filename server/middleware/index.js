@@ -88,10 +88,16 @@ export function rateLimitMiddleware({ name, limit, windowMs }) {
   };
 }
 
-// CSRF: проверяем Origin/Referer для изменяющих запросов и заголовок X-Requested-With
-// от нашего же клиента. SameSite=Lax уже даёт базовую защиту.
+// CSRF: Origin + заголовок X-Requested-With от нашего клиента (ст. 19 152-ФЗ).
+// SameSite=Lax даёт базовую защиту, но не заменяет проверку изменяющих запросов.
 export function csrfGuard(req, res, next) {
   if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
+  if (req.path.startsWith('/api/')) {
+    const requestedBy = req.headers['x-requested-with'];
+    if (requestedBy !== 'fetch' && requestedBy !== 'XMLHttpRequest') {
+      return res.status(403).json({ error: 'Запрос отклонён', code: 'csrf' });
+    }
+  }
   const origin = req.headers.origin;
   if (origin) {
     try {

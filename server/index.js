@@ -10,13 +10,15 @@ import {
 import { authRouter } from './routes/auth.js';
 import { processRouter } from './routes/process.js';
 import { historyRouter } from './routes/history.js';
+import { pdRouter } from './routes/personal-data.js';
 import { recoverStuckJobs, queueStats } from './jobs/queue.js';
 import { pruneSessions, publicUser, hasConsent } from './services/users.js';
 import { renderPage } from './render.js';
 import { PAGES, notFound, serverError } from './pages/index.js';
 import { providerInfo } from './core/llm/provider.js';
 import { isOcrAvailable } from './core/extract/ocr.js';
-import { purgeExpired } from './services/documents.js';
+import { purgeExpiredAll } from './services/documents.js';
+import { purgePersonalDataLogs } from './services/personal-data.js';
 import { startVkBot, stopVkBot } from './services/vk-bot.js';
 
 export function createApp() {
@@ -46,6 +48,7 @@ export function createApp() {
   });
 
   app.use('/api/auth', authRouter);
+  app.use('/api', pdRouter);
   app.use('/api', processRouter);
   app.use('/api', historyRouter);
 
@@ -120,7 +123,8 @@ function startMaintenance() {
   const run = () => {
     try {
       pruneSessions();
-      purgeExpired(config.retentionDays);
+      purgeExpiredAll();
+      purgePersonalDataLogs();
     } catch (error) {
       console.error('[maintenance]', error.message);
     }

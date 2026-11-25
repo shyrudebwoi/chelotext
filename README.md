@@ -100,7 +100,7 @@ npm start
 |---|---|
 | `npm start` | Запуск сервера на `:3000` (`node --no-warnings server/index.js`). |
 | `npm run dev` | То же, но с `--watch`. |
-| `npm test` | 141 тестов через `node --test` (`test/*.test.js`), включая e2e на временной БД, тесты GigaChat с мок-транспортом и тесты бота ВК. |
+| `npm test` | 156 тестов через `node --test` (`test/*.test.js`), включая e2e на временной БД, тесты GigaChat с мок-транспортом, тесты бота ВК и тесты 152-ФЗ. |
 | `npm run eval` | Прогон 18 эталонных текстов через движок правил; отчёт — `eval/report.md`, exit code 1 при провале сохранности. |
 | `npm run eval -- --levels` | Прогон уровней 1, 3 и 5. |
 | `npm run eval -- --json` | Машинный вывод вместо Markdown-отчёта. |
@@ -127,7 +127,8 @@ npm start
 | GigaChat | три поля доступа (пустые), `GIGACHAT_SCOPE=GIGACHAT_API_PERS`, `GIGACHAT_MODEL=GigaChat-2`, `GIGACHAT_API_URL=https://api.giga.chat/v1`, `GIGACHAT_OAUTH_URL=https://ngw.devices.sberbank.ru:9443/api/v2/oauth`, `GIGACHAT_USER_AGENT=chelotext/1.0`, `GIGACHAT_TOKEN_SKEW_MS=60000`, `GIGACHAT_CA_FILE=certs/russian_trusted_root_ca.crt` |
 | ВКонтакте | `VK_BOT_ENABLED=false`, `VK_BOT_GROUP_ID=`, `VK_BOT_TOKEN=`, `VK_BOT_ADMIN_IDS=`, `VK_BOT_API_VERSION=5.199`, `VK_BOT_TZ=Europe/Moscow`, `VK_BOT_POLL_WAIT=25` |
 | OCR | `OCR_ENABLED=true`, `OCR_LANGS=rus+eng`, `OCR_DPI=200`, `OCR_MIN_CONFIDENCE=60` |
-| Юридическое | `POLICY_VERSION=2026-11-24`, `OPERATOR_NAME=Оператор сервиса «Челотекст»`, `OPERATOR_EMAIL=privacy@chelotext.local` |
+| Юридическое | `POLICY_VERSION=2026-11-25`, `OPERATOR_NAME=Оператор сервиса «Челотекст»`, `OPERATOR_EMAIL=privacy@chelotext.local`, `OPERATOR_ADDRESS=`, `OPERATOR_INN=`, `PD_RESPONSIBLE=` |
+| 152-ФЗ | `PD_REQUEST_SLA_DAYS=10`, `PD_REQUEST_RETENTION_DAYS=1095`, `PD_ACCESS_LOG_RETENTION_DAYS=365`, `PD_LOCALIZATION=`, `PD_RKN_NOTICE=` |
 
 `LLM_BASE_URL` и `LLM_API_KEY` при `LLM_PROVIDER=gigachat` игнорируются; `SESSION_SECRET` можно оставить пустым. Изменения в `.env` вступают в силу только после перезапуска сервера.
 
@@ -276,7 +277,9 @@ docker compose -f deploy/docker-compose.yml logs -f app
 - `.env`, `data/`, `certs/*.crt`, `node_modules/`, `tmp/`, `*.log` и `eval/report.md` исключены через `.gitignore`. Коммитов и пушей без вашей просьбы не делалось.
 - Не пересылайте ключ в чаты, скриншоты, issue и отчёты об ошибках. При утечке перевыпустите ключ в кабинете: удаление из файла недостаточно, старый ключ может действовать ещё до 250 минут.
 - При включённой модели текст уходит выбранному провайдеру. Для персональных данных используйте `rules` или self-hosted Ollama.
-- Согласие на ПДн обязательно: без него API отдаёт 403, а отзыв согласия удаляет данные пользователя.
+- Согласие на ПДн обязательно и отделено от оферты: без него API отдаёт 403. Требуется подтверждение 18+, передача текста провайдеру — отдельная галочка. Отзыв согласия удаляет данные пользователя и останавливает активные задачи.
+- Обращения субъектов ПДн (ст. 20 152-ФЗ) принимает форма `/legal/personal-data`; номер и срок ответа доступны сразу, статус проверяется по номеру и почте.
+- Журнал доступа к ПДн и обращения субъектов очищаются по своим срокам; тексты — по персональному сроку каждого пользователя. Реквизиты оператора в `.env.example` — заглушки, заменить до публичного запуска.
 
 ---
 
@@ -289,8 +292,8 @@ chelotext/
 │  ├─ config.js             # чтение .env, лимиты, пороги, настройки LLM и OCR
 │  ├─ db/index.js           # SQLite на node:sqlite, миграции, обёртки q.*
 │  ├─ middleware/           # сессии, gate согласия, rate-limit, CSRF, заголовки
-│  ├─ routes/               # /api/auth, /api/process, /api/history
-│  ├─ services/             # users, documents, ingest, usage (токены), vk-bot
+│  ├─ routes/               # /api/auth, /api/process, /api/history, /api/pd
+│  ├─ services/             # users, documents, consent, personal-data, ingest, usage, vk-bot
 │  ├─ jobs/queue.js         # in-process очередь: статусы, прогресс, отмена
 │  ├─ core/
 │  │  ├─ pipeline.js        # precheck → правила → LLM → integrity
@@ -307,7 +310,7 @@ chelotext/
 ├─ docs/                    # TZ, PROMPT, context, design, HANDOFF, architecture, decisions
 ├─ api/                     # выжимки документации GigaChat и ProxyAPI (без ключей)
 ├─ eval/                    # eval/run.js, eval/texts/*.txt (18 текстов), eval/report.md
-├─ test/                    # 141 тестов, node:test
+├─ test/                    # 156 тестов, node:test
 ├─ scripts/                 # icons.js, check.js (lint), certs.js (скачивание CA)
 ├─ deploy/                  # Dockerfile + docker-compose.yml для запуска на сервере
 ├─ certs/                   # сертификат НУЦ Минцифры (в git не попадает)

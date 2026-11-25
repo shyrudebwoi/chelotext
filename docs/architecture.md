@@ -35,8 +35,8 @@ flowchart LR
 |---|---|---|
 | Транспорт | `server/index.js`, `server/render.js`, `server/pages/index.js` | Express, статика с версионированием ассетов, SSR-страницы, `/healthz`, 404/500 без стектрейсов. |
 | Middleware / безопасность | `server/middleware/index.js`, `server/lib/*` | Подписанные cookie-сессии, **gate согласия (403)**, rate-limit по IP/пользователю, CSRF по Origin, CSP и другие заголовки. |
-| API | `server/routes/auth.js`, `process.js`, `history.js` | Авторизация/согласие, обработка и задачи, ревизии, экспорт, история, настройки, удаление данных. |
-| Прикладные сервисы | `server/services/users.js`, `documents.js`, `ingest.js`, `usage.js`, `vk-bot.js`, `server/jobs/queue.js` | Пользователи и согласия, документы/задачи/ревизии/экспорты, приём материалов, учёт токенов, бот ВК, очередь. |
+| API | `server/routes/auth.js`, `process.js`, `history.js`, `personal-data.js` | Авторизация/согласие, обработка и задачи, ревизии, экспорт, история, настройки, обращения субъектов ПДн и удаление данных. |
+| Прикладные сервисы | `server/services/users.js`, `documents.js`, `consent.js`, `personal-data.js`, `ingest.js`, `usage.js`, `vk-bot.js`, `server/jobs/queue.js` | Пользователи и согласия, отдельный текст согласия, обращения/журнал ПДн, документы/задачи/ревизии/экспорты, приём материалов, учёт токенов, бот ВК, очередь. |
 | Ядро обработки | `server/core/**` | AST, правила, LLM-адаптеры, предпроверка, контроль целостности, извлечение, экспорт, diff. |
 | Данные | `server/db/index.js` | `DatabaseSync` из `node:sqlite`, WAL, внешние ключи, миграции. |
 | Клиент | `public/**` | SSR-страницы + модульный JS, PWA manifest и service worker, локальные шрифты и иконки. |
@@ -203,7 +203,7 @@ flowchart TD
 
 ## 10. Инструменты и известные разрывы с ТЗ/планом
 
-- `npm run lint` и `npm run certs` имеют рабочие скрипты в `scripts/`; `npm test` — 141 зелёных тестов, включая изоляцию секретов GigaChat; eval-выборка — 18/18.
+- `npm run lint` и `npm run certs` имеют рабочие скрипты в `scripts/`; `npm test` — 156 зелёных тестов, включая изоляцию секретов GigaChat и проверки 152-ФЗ; eval-выборка — 18/18.
 - `SYNC_MAX_MS` есть в конфиге, но переключение в очередь идёт только по числу знаков.
 - `OCR_CONCURRENCY` объявлен в конфиге, но отдельный лимит для OCR в очереди не применяется.
 - EPUB и офлайн-обработка не реализованы.

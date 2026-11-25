@@ -89,7 +89,8 @@ export function countDocuments(userId, query = '') {
 }
 
 export function deleteDocument(userId, id) {
-  const result = q.run('UPDATE documents SET deleted_at = ? WHERE id = ? AND user_id = ?', now(), id, userId);
+  // По запросу пользователя данные удаляются физически, а не просто помечаются.
+  const result = q.run('DELETE FROM documents WHERE id = ? AND user_id = ?', id, userId);
   return result.changes > 0;
 }
 
@@ -283,11 +284,37 @@ export function logBlockedAttempt({ userId, reasonCode, excerpt, charCount }) {
 }
 
 // ---------- Срок хранения ----------
-export function purgeExpired(retentionDays = config.retentionDays) {
-  const threshold = new Date(Date.now() - retentionDays * 24 * 3600 * 1000).toISOString();
-  const docs = q.run('DELETE FROM documents WHERE created_at < ?', threshold);
-  const jobs = q.run(`DELETE FROM jobs WHERE created_at < ? AND status IN ('done','failed','cancelled')`, threshold);
-  return { documents: docs.changes, jobs: jobs.changes };
+// Каждый пользователь имеет свой срок: нельзя применять срок одного к данным другого.
+const PURGE_TABLES = [
+  ['documents', ''],
+  ['jobs', ` AND status IN ('done','failed','cancelled')`],
+  ['edits', ''],
+  ['exports', ''],
+  ['precheck_log', ''],
+  ['llm_usage', ''],
+];
+
+export function purgeUserExpired(userId, retentionDays = config.retentionDays) {
+  const days = Math.min(365, Math.max(1, Math.trunc(Number(retentionDays)) || config.retentionDays));
+  const threshold = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
+  const result = {};
+  for (const [table, extra] of PURGE_TABLES) {
+    result[table] = q.run(`DELETE FROM ${table} WHERE user_id = ? AND created_at < ?${extra}`, userId, threshold).changes;
+  }
+  return result;
+}
+
+export function purgeExpiredAll() {
+  const users = q.all('SELECT id, retention_days FROM users ORDER BY id');
+  const total = { documents: 0, jobs: 0, edits: 0, exports: 0, precheck_log: 0, llm_usage: 0 };
+  for (const user of users) {
+    const result = purgeUserExpired(user.id, user.retention_days ?? config.retentionDays);
+    for (const key of Object.keys(total)) total[key] += result[key];
+  }
+  // Записи без пользователя подчиняются глобальному сроку.
+  const threshold = new Date(Date.now() - config.retentionDays * 24 * 3600 * 1000).toISOString();
+  total.precheck_log += q.run('DELETE FROM precheck_log WHERE user_id IS NULL AND created_at < ?', threshold).changes;
+  return total;
 }
 
 function safeJson(value) {
