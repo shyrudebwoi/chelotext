@@ -229,7 +229,7 @@ chelotext/
 ├─ eval/                    # eval/run.js, eval/texts/*.txt (18 текстов), eval/report.md
 ├─ test/                    # 126 тестов, node:test
 ├─ scripts/                 # icons.js, check.js (lint), certs.js (скачивание CA)
-├─ deploy/                  # Dockerfile, compose, nginx, systemd, deploy.sh — деплой на VDS
+├─ deploy/                  # Dockerfile + docker-compose.yml для запуска на сервере
 ├─ certs/                   # сертификат НУЦ Минцифры (в git не попадает)
 ├─ data/                    # БД, tessdata, секрет сессий (в git не попадает)
 ├─ .gitignore               # исключает .env, data/, certs/*.crt, tmp/, node_modules/ и др.
@@ -243,20 +243,25 @@ chelotext/
 
 ## Деплой на VDS
 
-Готовый комплект лежит в [deploy/](./deploy/README.md): `Dockerfile`, `docker-compose.yml`, конфиг nginx, systemd-юнит, шаблон production-`.env` и скрипт `deploy.sh` с командами `install|update|status|backup`.
+В [deploy/](./deploy/README.md) лежит минимальный комплект: `Dockerfile` и `docker-compose.yml`.
+HTTPS, домен и проксирование настраиваются в Nginx Proxy Manager — приложение просто слушает
+HTTP-порт `3000`, данные хранятся в Docker volume.
 
 Коротко:
 
 ```bash
-# Docker (рекомендуется): приложение на 127.0.0.1:3000, nginx с HTTPS снаружи
-cp deploy/.env.production.example .env   # вписать только ключи GigaChat
-./deploy/deploy.sh install
-
-# Без Docker: Node 22 + systemd
-MODE=systemd sudo -E ./deploy/deploy.sh install
+cp .env.example .env      # вписать только ключи GigaChat
+mkdir -p certs
+curl -fsSL https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt \
+  -o certs/russian_trusted_root_ca.crt
+docker compose -f deploy/docker-compose.yml up -d --build
 ```
 
-Подробности — [deploy/README.md](./deploy/README.md): доступ к приватному репозиторию через deploy key, сертификат НУЦ Минцифры, nginx + certbot, бэкапы `data/`, обновление и диагностика.
+В Nginx Proxy Manager создайте Proxy Host на `172.17.0.1:3000` (или на IP хоста) и выпустите
+сертификат. Обновление: `git pull && docker compose -f deploy/docker-compose.yml up -d --build`.
+
+Подробности — [deploy/README.md](./deploy/README.md): окружение, сертификат GigaChat,
+Nginx Proxy Manager, бэкап volume и диагностика.
 
 ---
 

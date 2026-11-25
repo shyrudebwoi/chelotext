@@ -9,7 +9,10 @@ tmp
 certs/*.crt
 certs/*.pem
 *.log
-eval/report.md
+eval
+test
+docs
+api
 coverage
 NUL
 .DS_Store

@@ -49,7 +49,7 @@
 | Тесты | `npm test` — 126 тестов, `node:test`, без сети (GigaChat на мок-транспорте) |
 | Eval | `npm run eval` — 18 эталонных текстов, проверка сохранности |
 | Линт | `npm run lint` — синтаксис, запрет `console.log` в `server/`, обязательные файлы |
-| Деплой | `deploy/` — Docker Compose **или** systemd + nginx + certbot |
+| Деплой | `deploy/` — Docker Compose; HTTPS и домен — в Nginx Proxy Manager |
 | Ветка | `master`, remote `origin`, приватный GitHub-репозиторий |
 
 **Windows-особенность:** в PowerShell вызывайте `npm.cmd`, а не `npm` (блокируется execution policy).
@@ -115,7 +115,7 @@ chelotext/
 │  ├─ manifest.webmanifest
 │  ├─ fonts/                   # Manrope + Literata (woff2, локально)
 │  └─ icons/
-├─ deploy/                     # Dockerfile, compose, nginx, systemd, deploy.sh, README
+├─ deploy/                     # Dockerfile, docker-compose.yml, README для VDS
 ├─ docs/                       # TZ, PROMPT, design, context, architecture, decisions, HANDOFF
 ├─ api/                        # выжимки документации GigaChat и ProxyAPI (без ключей)
 ├─ eval/                       # run.js + 18 текстов; report.md генерируется и не коммитится
@@ -436,11 +436,10 @@ ProxyAPI платный. Документация — `api/ProxyAPI_*.md`.
 ### 11.1 Файлы
 
 - `.env.example` — полностью заполненный шаблон; пусты **только** три поля доступа GigaChat.
-- `.env` — рабочие настройки, в git не попадает (`.gitignore`).
-- `deploy/.env.production.example` — production-шаблон для VDS (те же три пустых поля).
+- `.env` — рабочие настройки, в git не попадает (`.gitignore`). Docker Compose читает этот же файл.
 - `.gitignore`: `.env`, `data/`, `tmp/`, `certs/*.crt`, `certs/*.pem`, `*.log`, `node_modules/`,
   `eval/report.md`, `coverage/`, `NUL`.
-- `.dockerignore`: `.env*`, `data`, `node_modules`, `certs/*.crt`, `.git` и т. д.
+- `.dockerignore`: `.env*`, `data`, `node_modules`, `certs/*.crt`, `docs/`, `test/`, `eval/`, `api/`, `.git` и т. д.
 
 ### 11.2 Ключевые переменные
 
@@ -493,34 +492,35 @@ npm.cmd run dev       # сервер с --watch
 
 | Файл | Назначение |
 |---|---|
-| `Dockerfile` | `node:22-bookworm-slim`, `npm ci --omit=dev`, non-root `chelotext`, healthcheck |
-| `docker-compose.yml` | `env_file: ../.env`, volume `chelotext-data:/app/data`, `../certs:/app/certs:ro`, порт `127.0.0.1:3000` |
-| `nginx/chelotext.conf` | HTTP→HTTPS, TLS, `client_max_body_size 26m`, прокси на `127.0.0.1:3000` |
-| `chelotext.service` | systemd-юнит: `NODE_ENV=production`, `HOST=127.0.0.1`, `SECURE_COOKIES=true`, `TRUST_PROXY=true`, restart |
-| `.env.production.example` | production-шаблон, пусты только ключи GigaChat |
-| `deploy.sh` | `install|update|status|backup`, `MODE=docker|systemd` |
-| `README.md` | пошагово: deploy key, установка, nginx/certbot, обновление, бэкап, диагностика |
+| `Dockerfile` | `node:22-bookworm-slim`, `npm ci --omit=dev`, только `server/` и `public/`, non-root `chelotext`, healthcheck |
+| `docker-compose.yml` | `env_file: ../.env`, volume `chelotext-data:/app/data`, `../certs:/app/certs:ro`, хост-порт `${APP_PORT:-3000}:3000` |
+| `README.md` | окружение, сертификат НУЦ Минцифры, Nginx Proxy Manager, обновление, бэкап, диагностика |
 
 ### 13.2 Команды
 
 ```bash
-# Docker (рекомендуется)
-cp deploy/.env.production.example .env   # вписать только ключи GigaChat
-./deploy/deploy.sh install
-./deploy/deploy.sh update
-./deploy/deploy.sh status
-./deploy/deploy.sh backup
+cp .env.example .env                 # вписать только ключи GigaChat
+mkdir -p certs && curl -fsSL \
+  https://gu-st.ru/content/lending/russian_trusted_root_ca_pem.crt \
+  -o certs/russian_trusted_root_ca.crt
 
-# Без Docker
-MODE=systemd sudo -E ./deploy/deploy.sh install
+docker compose -f deploy/docker-compose.yml up -d --build
+docker compose -f deploy/docker-compose.yml ps
+curl -s http://127.0.0.1:3000/healthz
+
+# обновление
+git pull
+docker compose -f deploy/docker-compose.yml up -d --build
 ```
 
-- Приложение всегда слушает `127.0.0.1:3000`, наружу — nginx с HTTPS.
+- Приложение слушает `0.0.0.0:3000`; наружу его публикует Nginx Proxy Manager
+  (Proxy Host → `172.17.0.1:3000`, затем Let's Encrypt и Force SSL).
 - `SECURE_COOKIES=true` требует HTTPS; `TRUST_PROXY=true` включает доверие `X-Forwarded-*`.
-- `data/` — volume/каталог, переживает перезапуск и `docker compose down`; `down -v` удаляет.
+- `data/` заменён на volume `chelotext-data`: переживает перезапуск и `docker compose down`;
+  `down -v` удаляет. Бэкап — `tar` содержимого volume (команда в `deploy/README.md`).
 - Сертификат НУЦ Минцифры скачивается на хост и монтируется read-only.
 - Приватный репозиторий: deploy key (рекомендуется) или PAT; токен не коммитить.
-- Если файлы копировали с Windows, проверьте CRLF: `sed -i 's/\r$//' deploy/deploy.sh`.
+- Порт 3000 при публичном IP стоит закрыть файрволом: снаружи — только NPM на 80/443.
 
 ---
 
@@ -569,9 +569,8 @@ MODE=systemd sudo -E ./deploy/deploy.sh install
 - GigaChat реально проверен: OAuth, `chat/completions`, пайплайн с `llm.used: true`.
 - Тесты 126/126, eval 18/18, lint OK.
 - Документация: README, architecture, decisions (ADR-001…011), HANDOFF, context.
-- Деплой: Docker Compose и systemd + nginx + certbot, скрипты и инструкция.
-- Репозиторий: приватный GitHub, ветка `master`, последние коммиты
-  `cb410df → 8c6be86 → 34db35f → b644219` (+ коммит с этим файлом).
+- Деплой: Docker Compose (`deploy/`), HTTPS и домен — в Nginx Proxy Manager; пошаговая инструкция в `deploy/README.md`.
+- Репозиторий: приватный GitHub, ветка `master`, актуальный список коммитов — `git log --oneline`.
 
 ### 15.2 Осталось / не проверено вручную
 
@@ -610,7 +609,7 @@ MODE=systemd sudo -E ./deploy/deploy.sh install
 | 008 | Регистрация service worker без ожидания `load` |
 | 009 | GigaChat — основной провайдер для физлиц |
 | 010 | Никаких секретов в репозитории; `/healthz` без значений |
-| 011 | Деплой на VDS: Docker Compose или systemd, nginx + TLS, `data/` отдельно |
+| 011 | Деплой на VDS: Docker Compose + внешний Nginx Proxy Manager, volume `chelotext-data` |
 
 ---
 
@@ -631,7 +630,7 @@ MODE=systemd sudo -E ./deploy/deploy.sh install
 2. Добавьте ветку в `createProvider()` и `providerInfo()`.
 3. Не раскрывайте ключ в `providerInfo`/`/healthz`.
 4. Добавьте тесты с мок-транспортом, без сети.
-5. Обновите `.env.example`, `deploy/.env.production.example`, README, context.
+5. Обновите `.env.example`, README, context; проверьте `deploy/docker-compose.yml` и `deploy/README.md`.
 
 ### 17.3 Обновить статику/PWA
 
@@ -663,10 +662,11 @@ MODE=systemd sudo -E ./deploy/deploy.sh install
 
 ### 17.6 Деплой/обновление VDS
 
-1. `git pull` / `./deploy/deploy.sh update`.
-2. Проверить `./deploy/deploy.sh status` и `/healthz`.
-3. Перед обновлением — `./deploy/deploy.sh backup`.
-4. После изменения `.env` — перезапуск (`docker compose restart` или `systemctl restart chelotext`).
+1. `git pull`.
+2. `docker compose -f deploy/docker-compose.yml up -d --build`.
+3. Проверить `docker compose -f deploy/docker-compose.yml ps` и `/healthz`.
+4. Перед обновлением — бэкап volume `chelotext-data` (команда в `deploy/README.md`).
+5. После изменения `.env` — `docker compose -f deploy/docker-compose.yml up -d --force-recreate`.
 
 ---
 
@@ -747,7 +747,7 @@ MODE=systemd sudo -E ./deploy/deploy.sh install
 
 - Настройки и ползунок перенесены в правую колонку от поля ввода; интерфейс уплотнён.
 - Исправлено наложение «БЫЛО / СТАЛО» на текст в diff (удалён sticky-заголовок).
-- Добавлен комплект деплоя на VDS (Docker/systemd/nginx/certbot).
+- Добавлен комплект деплоя на VDS; позже упрощён до Docker Compose + Nginx Proxy Manager.
 - Поднята версия SW-кэша, `/sw.js` отдаётся без кэша.
 
 ---
@@ -771,3 +771,7 @@ MODE=systemd sudo -E ./deploy/deploy.sh install
 - **25.11.2026** — исправлено наложение заголовков diff на текст; `sw.js` без кэша,
   версия кэша `chelotext-v2`.
 - **25.11.2026** — этот файл переписан как полное руководство для следующих ИИ-агентов.
+- **25.11.2026** — `deploy/` упрощён до `Dockerfile` + `docker-compose.yml` + `README.md`:
+  удалены nginx-конфиг, systemd-юнит, `deploy.sh` и production-шаблон `.env`; TLS и домен
+  настраиваются в Nginx Proxy Manager, данные — в volume `chelotext-data`, образ собирается
+  только с production-зависимостями.

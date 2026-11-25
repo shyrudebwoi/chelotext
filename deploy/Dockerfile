@@ -6,17 +6,19 @@ ENV NODE_ENV=production \
 
 WORKDIR /app
 
-# ca-certificates нужен для OAuth GigaChat (проверка TLS не отключается).
+# ca-certificates нужен для OAuth GigaChat: проверку TLS не отключаем.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
+# Только production-зависимости и только то, что нужно во время работы.
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev && npm cache clean --force
 
-COPY . .
+COPY server ./server
+COPY public ./public
 
-# Данные и сертификат монтируются с хоста: см. docker-compose.yml.
+# data/ и certs/ монтируются с хоста: см. docker-compose.yml.
 RUN mkdir -p /app/data /app/certs \
  && useradd --uid 10001 --create-home --shell /usr/sbin/nologin chelotext \
  && chown -R chelotext:chelotext /app/data /app/certs

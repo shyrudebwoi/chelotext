@@ -1,3 +1,10 @@
+# Простейший деплой: один контейнер, данные — в named volume.
+# HTTPS, домен и сертификаты настраиваются в Nginx Proxy Manager,
+# здесь приложение слушает обычный HTTP на порту 3000.
+#
+# Запуск из корня репозитория:
+#   docker compose -f deploy/docker-compose.yml up -d --build
+
 services:
   app:
     build:
@@ -12,17 +19,17 @@ services:
       NODE_ENV: production
       HOST: 0.0.0.0
       PORT: 3000
-      # За HTTPS отвечает nginx на хосте, поэтому cookie только для secure-соединений.
+      # TLS терминирует Nginx Proxy Manager и передаёт X-Forwarded-Proto.
       SECURE_COOKIES: "true"
       TRUST_PROXY: "true"
     volumes:
-      # SQLite, tessdata и секрет сессий живут отдельно от контейнера.
+      # SQLite, секрет сессий и данные OCR переживают пересоздание контейнера.
       - chelotext-data:/app/data
-      # Корневой PEM НУЦ Минцифры (скачивается скриптом deploy на хосте).
+      # PEM НУЦ Минцифры для проверки TLS GigaChat (см. README).
       - ../certs:/app/certs:ro
     ports:
-      # Приложение доступно только локально; наружу его публикует nginx.
-      - "127.0.0.1:3000:3000"
+      # Хост-порт можно изменить: APP_PORT=3100 docker compose ...
+      - "${APP_PORT:-3000}:3000"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
@@ -31,4 +38,6 @@ services:
       start_period: 20s
 
 volumes:
+  # Фиксированное имя, чтобы бэкап и восстановление не зависели от имени проекта.
   chelotext-data:
+    name: chelotext-data
