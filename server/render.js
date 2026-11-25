@@ -73,6 +73,7 @@ const ICONS = {
   shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/>',
   sparkle: '<path d="m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9Z"/><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9Z"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  logout: '<path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"/>',
   dot: '<circle cx="12" cy="12" r="3"/>',
 };
 
@@ -136,6 +137,7 @@ export function renderPage({ page, title, description, body, user, config: cfg =
   const navUser = user
     ? `<a class="nav__link nav__link--hide-mobile" href="/history">${icon('history', 18)}<span>История</span></a>
        <a class="nav__link" href="/settings" aria-label="Настройки">${icon('settings', 18)}<span class="sr-only">Настройки</span></a>
+       <button class="nav__link nav__link--logout" type="button" data-logout aria-label="Выйти из аккаунта" title="Выйти">${icon('logout', 18)}<span class="sr-only">Выйти</span></button>
        <a class="nav__link" href="/app">Вставить текст</a>`
     : `<a class="nav__link nav__link--hide-mobile" href="/login">Войти</a>
        <a class="btn btn--sm" href="/start">Начать</a>`;

@@ -132,21 +132,104 @@ curl -s http://127.0.0.1:3000/healthz
 
 ---
 
-## 5. Обновление
+## 5. Передеплой после изменений в GitHub
+
+### 0. Перед обновлением — проверьте диск
+
+Из-за заполненного диска SQLite не может открыть WAL: контейнер уходит в `Restarting (1)`,
+а в логах появляется `disk I/O error` / `SQLITE_IOERR_SHMSIZE` (`errcode: 4874`).
 
 ```bash
-cd /opt/chelotext
-git pull
+df -h / /var/lib/docker
+```
+
+Нужно хотя бы ~500 МБ свободно: последние 5% файловой системы зарезервированы под root,
+а приложение работает от uid `10001` и эти резервы не видит. Если места мало — чистите
+**без удаления volume**:
+
+```bash
+docker builder prune -f          # build-cache после --build — обычно самый большой
+docker image prune -f            # только dangling-образы
+docker container prune -f        # только остановленные контейнеры
+journalctl --vacuum-size=200M
+apt-get clean
+```
+
+⚠️ Никогда не добавляйте `docker system prune -a --volumes` и `docker volume prune`:
+вместе с мусором удалится `chelotext-data` — база, секрет сессий и данные OCR.
+
+Чтобы диск не заполнялся снова, ограничьте логи Docker в `/etc/docker/daemon.json`:
+
+```json
+{
+  "log-driver": "json-file",
+  "log-opts": { "max-size": "10m", "max-file": "3" }
+}
+```
+
+После правки выполните `systemctl restart docker` — контейнеры с `restart: unless-stopped`
+поднимутся сами. Watchtower тоже может копить слои: если он не должен обновлять приложение,
+добавьте в `docker-compose.yml` метку `com.centurylinklabs.watchtower.enable: "false"`.
+
+### 1. Подтянуть код
+
+```bash
+cd /opt/chelotext               # или ваш путь, например /proj/chelotext
+git status --short              # локальных правок быть не должно
+git pull --ff-only
+git log -1 --oneline            # убедились, что приехал нужный коммит
+```
+
+`.env`, `certs/` и `chelotext-data` в git не попадают и при `git pull` не трогаются.
+
+### 2. Пересобрать и пересоздать
+
+```bash
 docker compose -f deploy/docker-compose.yml up -d --build
 ```
 
-После изменения `.env`:
+Если менялся `.env` или нужно заново применить те же значения — добавьте `--force-recreate`:
 
 ```bash
-docker compose -f deploy/docker-compose.yml up -d --force-recreate
+docker compose -f deploy/docker-compose.yml up -d --build --force-recreate
 ```
 
-Логи и перезапуск:
+Если контейнер перед этим был остановлен и удалён (`docker rm` / `container prune`),
+используйте именно `up -d` — команда `docker compose start app` в этом случае ничего не найдёт.
+
+Если `up` падает с `Conflict. The container name "/..._chelotext" is already in use` —
+мешает старый контейнер из другого Compose-проекта или деплой-инструмента. `--remove-orphans`
+здесь не поможет: удалите только его:
+
+```bash
+docker ps -a --filter "name=chelotext"
+docker rm -f <CONTAINER_ID>
+docker compose -f deploy/docker-compose.yml up -d --build
+```
+
+Данные при этом сохраняются: SQLite лежит в именованном volume `chelotext-data`.
+
+### 3. Проверить результат
+
+```bash
+docker compose -f deploy/docker-compose.yml ps
+docker compose -f deploy/docker-compose.yml logs -f --tail=50 app
+curl -fsS http://127.0.0.1:3000/healthz
+```
+
+Успех: `Up ... (healthy)`, в логах `Челотекст запущен` и `VK-бот: Long Poll запущен`,
+в `/healthz` — `configured:true`, а домен через NPM не отдаёт `502`.
+Статус `health: starting` сразу после старта — нормально (`start_period: 20s`, `interval: 30s`).
+
+### Откат
+
+```bash
+git log --oneline -5
+git checkout <предыдущий-sha>
+docker compose -f deploy/docker-compose.yml up -d --build --force-recreate
+```
+
+### Логи и перезапуск
 
 ```bash
 docker compose -f deploy/docker-compose.yml logs -f app
@@ -163,20 +246,21 @@ SQLite, секрет сессий и языковые данные OCR лежа�
 Бэкап:
 
 ```bash
-docker run --rm \
+# образ chelotext:latest уже есть на сервере — alpine не скачиваем
+docker run --rm -u root \
   -v chelotext-data:/data \
   -v "$PWD":/backup \
-  alpine tar czf /backup/chelotext-data-$(date +%F).tar.gz -C /data .
+  chelotext:latest tar czf /backup/chelotext-data-$(date +%F).tar.gz -C /data .
 ```
 
 Восстановление (контейнер должен быть остановлен):
 
 ```bash
 docker compose -f deploy/docker-compose.yml stop app
-docker run --rm \
+docker run --rm -u root \
   -v chelotext-data:/data \
   -v "$PWD":/backup \
-  alpine sh -c 'rm -rf /data/* && tar xzf /backup/chelotext-data-YYYY-MM-DD.tar.gz -C /data'
+  chelotext:latest sh -c 'rm -rf /data/* && tar xzf /backup/chelotext-data-YYYY-MM-DD.tar.gz -C /data'
 docker compose -f deploy/docker-compose.yml start app
 ```
 
@@ -194,6 +278,9 @@ docker compose -f deploy/docker-compose.yml start app
 | `413 Request Entity Too Large` | в NPM → Advanced добавьте `client_max_body_size 26m;` (лимит приложения — 25 МБ) |
 | Не сохраняется вход | сайт открыт по HTTP или NPM не передаёт `X-Forwarded-Proto`; включите Force SSL |
 | Порт `3000` занят | задайте другой хост-порт: `APP_PORT=3100 docker compose ... up -d` и укажите `3100` в NPM |
+| `Conflict. The container name "/..._chelotext" is already in use` | старый контейнер из другого проекта/deploy-инструмента: `docker ps -a --filter name=chelotext`, затем `docker rm -f <ID>`; `--remove-orphans` не поможет |
+| `disk I/O error`, `errcode: 4874`, `Restarting (1)` | диск заполнен: `df -h /`; чистите `docker builder prune -f`, `docker image prune -f`, `journalctl --vacuum-size=200M`; volume не трогайте |
+| `docker compose start app` → «no such container» | контейнер был удалён (`rm` / `prune`): используйте `docker compose -f deploy/docker-compose.yml up -d` |
 
 ### Старый `docker-compose` v1
 

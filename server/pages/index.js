@@ -396,7 +396,7 @@ function appPage({ user }) {
 function historyPage({ user }) {
   if (!user) return { redirect: '/login' };
   const body = `
-<section class="section" style="padding-top:var(--s-8)">
+<section class="section" style="padding-top:var(--s-6)">
   <div class="container">
     <div class="row row--between mb-6">
       <div>
@@ -428,7 +428,7 @@ function historyPage({ user }) {
 function jobPage({ user, params }) {
   if (!user) return { redirect: '/login' };
   const body = `
-<section class="section" style="padding-top:var(--s-8)">
+<section class="section" style="padding-top:var(--s-6)">
   <div class="container" style="max-width:720px">
     <a class="btn btn--ghost btn--sm mb-6" href="/history">← В историю</a>
     <h1 id="job-title">Обрабатываем</h1>
@@ -466,13 +466,16 @@ function jobPage({ user, params }) {
 function settingsPage({ user }) {
   if (!user) return { redirect: '/login' };
   const body = `
-<section class="section" style="padding-top:var(--s-8)">
+<section class="section" style="padding-top:var(--s-6)">
   <div class="container" style="max-width:760px">
     <h1>Настройки</h1>
     <div class="card mt-6">
       <h3 class="card__title">Профиль</h3>
       <p class="mb-0"><strong>Почта:</strong> ${esc(user.email)}</p>
       <p class="small muted mb-0">Аккаунт с ${new Date(user.createdAt).toLocaleDateString('ru-RU')}</p>
+      <div class="row mt-4">
+        <button class="btn btn--ghost btn--sm" type="button" data-logout>${icon('logout', 16)} Выйти из аккаунта</button>
+      </div>
     </div>
 
     <div class="card mt-6">
@@ -527,7 +530,7 @@ function settingsPage({ user }) {
 // ---------- Правовые ----------
 function legalPrivacy() {
   const body = `
-<section class="section" style="padding-top:var(--s-8)">
+<section class="section" style="padding-top:var(--s-6)">
   <div class="container">
     <h1>Политика обработки данных</h1>
     <p class="muted">Версия ${esc(config.policyVersion)}</p>
@@ -573,7 +576,7 @@ function legalPrivacy() {
 
 function legalTerms() {
   const body = `
-<section class="section" style="padding-top:var(--s-8)">
+<section class="section" style="padding-top:var(--s-6)">
   <div class="container">
     <h1>Оферта</h1>
     <p class="muted">Версия ${esc(config.policyVersion)}</p>
@@ -604,7 +607,7 @@ function legalTerms() {
 
 function legalPersonalData() {
   const body = `
-<section class="section" style="padding-top:var(--s-8)">
+<section class="section" style="padding-top:var(--s-6)">
   <div class="container" style="max-width:760px">
     <h1>Форма обращения субъекта ПДн</h1>
     <p class="muted">Напиши нам — ответим в срок по закону.</p>

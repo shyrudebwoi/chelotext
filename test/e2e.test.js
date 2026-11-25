@@ -259,3 +259,17 @@ test('e2e: удаление аккаунта требует подтвержде
   assert.equal(wrong.status, 400);
   assert.equal(wrong.json.code, 'confirm_required');
 });
+
+test('e2e: кнопка выхода есть на странице и API разлогинивает', async () => {
+  const page = await api('GET', '/settings', undefined, { raw: true });
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /data-logout/);
+
+  const logout = await api('POST', '/api/auth/logout', {});
+  assert.equal(logout.status, 200);
+  assert.equal(logout.json.ok, true);
+
+  const me = await api('GET', '/api/auth/me');
+  assert.equal(me.status, 200);
+  assert.equal(me.json.user, null);
+});

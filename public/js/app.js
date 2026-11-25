@@ -139,6 +139,21 @@ if (header) {
   window.addEventListener('scroll', onScroll, { passive: true });
 }
 
+// Выход из аккаунта: одна кнопка в шапке и в настройках.
+document.addEventListener('click', async (event) => {
+  const button = event.target.closest?.('[data-logout]');
+  if (!button || button.dataset.logoutBusy) return;
+  event.preventDefault();
+  button.dataset.logoutBusy = '1';
+  try {
+    await api('/api/auth/logout', { method: 'POST' });
+    window.location.assign('/');
+  } catch (error) {
+    delete button.dataset.logoutBusy;
+    toast(error.message, 'error');
+  }
+});
+
 // PWA
 // Регистрация SW без обёртки в `load` — модульные скрипты могут загрузиться
 // после fire `load`, и регистрация потеряется.
