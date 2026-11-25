@@ -174,7 +174,7 @@ apt-get clean
 ### 1. Подтянуть код
 
 ```bash
-cd /opt/chelotext               # или ваш путь, например /proj/chelotext
+cd /opt/chelotext
 git status --short              # локальных правок быть не должно
 git pull --ff-only
 git log -1 --oneline            # убедились, что приехал нужный коммит
