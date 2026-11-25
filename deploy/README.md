@@ -186,6 +186,7 @@ docker compose -f deploy/docker-compose.yml start app
 
 | Симптом | Что проверить |
 |---|---|
+| `KeyError: 'ContainerConfig'` при `docker-compose ... up` | используется старый `docker-compose` v1 (1.29.2) с Docker Engine 25+. Перейдите на плагин v2: команда `docker compose` (через пробел), см. ниже |
 | `configured:false` в `/healthz` | ключ в `.env`, нет кавычек/пробелов вокруг `=`, контейнер пересоздан |
 | `401 credentials doesn't match db data` | ключ устарел или от другого проекта: используйте пару Client ID + Secret либо перевыпустите ключ |
 | `certificate verify failed` | нет `certs/russian_trusted_root_ca.crt` или он не смонтирован; повторите шаг 2 |
@@ -193,6 +194,35 @@ docker compose -f deploy/docker-compose.yml start app
 | `413 Request Entity Too Large` | в NPM → Advanced добавьте `client_max_body_size 26m;` (лимит приложения — 25 МБ) |
 | Не сохраняется вход | сайт открыт по HTTP или NPM не передаёт `X-Forwarded-Proto`; включите Force SSL |
 | Порт `3000` занят | задайте другой хост-порт: `APP_PORT=3100 docker compose ... up -d` и укажите `3100` в NPM |
+
+### Старый `docker-compose` v1
+
+Команда `docker-compose` (с дефисом) — это устаревший Python-скрипт 1.29.2. При пересоздании
+контейнера он читает поле `ContainerConfig` в метаданных образа, которое убрано в новых версиях
+Docker Engine. Отсюда `KeyError: 'ContainerConfig'`. Образ при этом собирается успешно — падает
+именно шаг `Recreating`.
+
+Правильное решение — плагин Compose v2 (команда `docker compose` через пробел). Если его ещё нет,
+поставьте бинарник напрямую (без изменения apt-репозиториев):
+
+```bash
+mkdir -p /usr/local/lib/docker/cli-plugins
+curl -fsSL "https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-$(uname -s)-$(uname -m)" \
+  -o /usr/local/lib/docker/cli-plugins/docker-compose
+chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+docker compose version
+
+cd /proj/chelotext
+docker compose -f deploy/docker-compose.yml up -d --force-recreate
+```
+
+Если плагин поставить нельзя, временный обход для v1 — удалить старый контейнер вручную,
+чтобы composer'у не пришлось его пересоздавать (volume с данными при этом сохраняется):
+
+```bash
+docker stop chelotext && docker rm chelotext
+docker-compose -f deploy/docker-compose.yml up -d
+```
 
 Секреты остаются только в `.env` на сервере: они не попадают ни в git, ни в образ
 (`.gitignore`, `.dockerignore`). Подробности по GigaChat — в [../api/README.md](../api/README.md).
